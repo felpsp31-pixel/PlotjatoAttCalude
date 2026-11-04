@@ -1,12 +1,33 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-flash';
+const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.8-flash';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
+
+// O Gemini responde 503 UNAVAILABLE quando o modelo esta sobrecarregado, o
+// que e comum na camada gratuita. Nesses casos vale reenviar: costuma passar
+// na segunda tentativa. 429 (cota por minuto) segue a mesma logica.
+async function callGemini(apiKey, body) {
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+  let last = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) return r;
+    if (r.status !== 503 && r.status !== 429) return r;
+    last = r;
+    if (attempt < 2) await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+  }
+  return last;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -40,27 +61,12 @@ serve(async (req) => {
     }
     const base64 = btoa(binary);
 
-    // API do Gemini direto no Google (camada gratuita, sem cartão).
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-      method: 'POST',
-      headers: {
-        'x-goog-api-key': GEMINI_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                inline_data: {
-                  mime_type: 'application/pdf',
-                  data: base64,
-                },
-              },
-              {
-                text: `Analise este documento PDF (boleto ou nota fiscal) e extraia as seguintes informações:
+    const response = await callGemini(GEMINI_API_KEY, {
+      contents: [
+        {
+          parts: [
+            { inline_data: { mime_type: 'application/pdf', data: base64 } },
+            { text: `Analise este documento PDF (boleto ou nota fiscal) e extraia as seguintes informações:
 1. Valor total (em reais, apenas o número com decimais, ex: 1500.00)
 2. Data de vencimento (no formato YYYY-MM-DD)
 3. Descrição curta do documento (ex: "NF 1234 - Consultoria" ou "Boleto - Mensalidade")
@@ -72,13 +78,11 @@ Responda APENAS em JSON válido com este formato exato:
   "description": "NF 1234 - Consultoria"
 }
 
-Se não conseguir identificar algum campo, use null para esse campo.`,
-              },
-            ],
-          },
-        ],
-        generationConfig: { temperature: 0.1 },
-      }),
+Se não conseguir identificar algum campo, use null para esse campo.` },
+          ],
+        },
+      ],
+      generationConfig: { temperature: 0.1 },
     });
 
     if (!response.ok) {

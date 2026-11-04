@@ -8,7 +8,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.1-flash";
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
 
 const SYSTEM_PROMPT = `Extraia da nota fiscal brasileira (NFS-e) os seguintes dados:
 1. Valor Líquido da NFS-e (campo 'Valor Líquido da NFS-e', já descontado ISSQN retido — nunca usar o Valor do Serviço bruto)
@@ -18,6 +18,27 @@ const SYSTEM_PROMPT = `Extraia da nota fiscal brasileira (NFS-e) os seguintes da
 5. Número da NFS-e
 Se não encontrar algum campo, use null. Responda SOMENTE em JSON válido, sem texto adicional:
 {"valor_liquido": 700.48, "vencimento": "2025-03-10", "issqn_retido": 17.52, "tomador": "NOME DA EMPRESA", "numero_nfse": "200"}`;
+
+// O Gemini responde 503 UNAVAILABLE quando o modelo esta sobrecarregado, o
+// que e comum na camada gratuita. Nesses casos vale reenviar: costuma passar
+// na segunda tentativa. 429 (cota por minuto) segue a mesma logica.
+async function callGemini(apiKey: string, body: unknown): Promise<Response> {
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+  let last: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await fetch(endpoint, {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) return r;
+    if (r.status !== 503 && r.status !== 429) return r;
+    last = r;
+    if (attempt < 2) await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+  }
+  return last as Response;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -39,37 +60,17 @@ serve(async (req) => {
       throw new Error("GEMINI_API_KEY is not configured");
     }
 
-    // API do Gemini direto no Google (camada gratuita, sem cartão).
-    // Se um dia o endpoint generateContent sair do ar, é só este bloco e a
-    // leitura da resposta logo abaixo que mudam.
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "x-goog-api-key": GEMINI_API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  inline_data: {
-                    mime_type: "application/pdf",
-                    data: pdf_base64,
-                  },
-                },
-                {
-                  text: `${SYSTEM_PROMPT}\n\nExtraia os dados desta nota fiscal NFS-e conforme instruído.`,
-                },
-              ],
-            },
+    const response = await callGemini(GEMINI_API_KEY, {
+      contents: [
+        {
+          parts: [
+            { inline_data: { mime_type: "application/pdf", data: pdf_base64 } },
+            { text: `${SYSTEM_PROMPT}\n\nExtraia os dados desta nota fiscal NFS-e conforme instruído.` },
           ],
-          generationConfig: { temperature: 0.1 },
-        }),
-      },
-    );
+        },
+      ],
+      generationConfig: { temperature: 0.1 },
+    });
 
     if (!response.ok) {
       if (response.status === 429) {

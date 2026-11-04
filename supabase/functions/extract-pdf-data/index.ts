@@ -83,7 +83,8 @@ Se não conseguir identificar algum campo, use null para esse campo.`,
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Gemini API error [${response.status}]: ${errorText}`);
+      // detalhe do provedor, para diagnostico: nao contem a chave
+      throw new Error(`Gemini API error [${response.status}]: ${errorText.slice(0, 400)}`);
     }
 
     const data = await response.json();

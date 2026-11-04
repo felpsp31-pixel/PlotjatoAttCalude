@@ -87,7 +87,11 @@ serve(async (req) => {
       const errorText = await response.text();
       console.error("Gemini API error:", response.status, errorText);
       return new Response(
-        JSON.stringify({ error: "Erro ao processar o PDF com IA." }),
+        JSON.stringify({
+          error: "Erro ao processar o PDF com IA.",
+          // detalhe do provedor, para diagnostico: nao contem a chave
+          detail: `[${response.status}] ${errorText.slice(0, 400)}`,
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

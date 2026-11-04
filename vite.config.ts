@@ -26,6 +26,11 @@ export default defineConfig(() => ({
         // Manual vendor chunks to keep initial bundle small and cache stable.
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
+          // React fica num pedaço só dele, resolvido antes de todos os outros.
+          // Se cair junto com bibliotecas que o consomem (cmdk, vaul), os
+          // pedaços passam a se importar em círculo e o React chega indefinido
+          // na avaliação do radix — tela branca com "forwardRef of undefined".
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react";
           if (id.includes("jspdf") || id.includes("html2canvas")) return "pdf";
           if (id.includes("xlsx")) return "xlsx";
           if (id.includes("recharts") || id.includes("d3-")) return "charts";

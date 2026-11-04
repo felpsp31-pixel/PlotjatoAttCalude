@@ -1,4 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// bcryptjs e JavaScript puro (sem WASM nem binario nativo), entao roda no
+// Edge Runtime. A lib bcrypt do deno.land nao verifica hash neste ambiente.
+import bcrypt from "npm:bcryptjs@3.0.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,16 +9,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Use Web Crypto API for bcrypt-compatible hashing
+// Grava sempre em bcrypt: tem alongamento de chave, ao contrario de uma
+// rodada de SHA-256, que e rapida demais para proteger senha.
 async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const saltB64 = btoa(String.fromCharCode(...salt));
-  const data = encoder.encode(saltB64 + password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = new Uint8Array(hashBuffer);
-  const hashB64 = btoa(String.fromCharCode(...hashArray));
-  return `$sha256$${saltB64}$${hashB64}`;
+  return await bcrypt.hash(password, 12);
 }
 
 async function verifyPassword(password: string, stored: string): Promise<boolean> {
@@ -31,10 +28,13 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
     const hashB64 = btoa(String.fromCharCode(...hashArray));
     return hashB64 === expectedHash;
   }
-  // Legacy bcrypt - can't verify in Deno without workers, fallback to plaintext compare
   if (stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$")) {
-    // Can't verify bcrypt here, treat as needing re-hash via env fallback
-    return false;
+    try {
+      return await bcrypt.compare(password, stored);
+    } catch (e) {
+      console.error("bcrypt compare falhou:", e);
+      return false;
+    }
   }
   // Plaintext comparison
   return password === stored;
@@ -97,10 +97,22 @@ Deno.serve(async (req) => {
 
     let valid = false;
 
+    let storedValue = "";
     if (!error && data) {
-      const storedValue = data.value?.trim() ?? "";
+      storedValue = data.value?.trim() ?? "";
       if (storedValue && storedValue !== "PLACEHOLDER") {
         valid = await verifyPassword(trimmedPassword, storedValue);
+      }
+    }
+
+    // Entrou com senha guardada em texto puro ou no formato antigo $sha256$?
+    // Regrava em bcrypt, para o banco nao continuar com o formato fraco.
+    if (valid && !storedValue.startsWith("$2")) {
+      try {
+        const upgraded = await hashPassword(trimmedPassword);
+        await supabase.from("app_settings").update({ value: upgraded }).eq("key", type);
+      } catch (e) {
+        console.error("falha ao migrar a senha para bcrypt:", e);
       }
     }
 

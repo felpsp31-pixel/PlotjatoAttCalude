@@ -1,0 +1,5 @@
+ALTER TABLE public.demandas
+  ADD COLUMN descricao TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE public.demandas
+  ADD COLUMN concluido_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;

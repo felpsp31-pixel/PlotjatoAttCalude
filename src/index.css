@@ -1,0 +1,149 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', system-ui, sans-serif;
+
+    --background: 0 0% 98%;
+    --foreground: 220 20% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 15%;
+
+    --primary: 215 20% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 220 20% 20%;
+
+    --muted: 220 14% 94%;
+    --muted-foreground: 215 15% 45%;
+
+    --accent: 220 14% 92%;
+    --accent-foreground: 220 20% 18%;
+
+    --destructive: 347 77% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --open: 215 16% 47%;
+    --open-foreground: 0 0% 100%;
+
+    --border: 220 14% 85%;
+    --input: 220 14% 85%;
+    --ring: 215 20% 45%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 20% 20%;
+    --sidebar-primary: 215 20% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 93%;
+    --sidebar-accent-foreground: 220 20% 18%;
+    --sidebar-border: 220 14% 85%;
+    --sidebar-ring: 215 20% 45%;
+
+    --kanban-column: 220 14% 95%;
+    --kanban-column-foreground: 220 20% 18%;
+
+    --login-gradient-from: 220 20% 96%;
+    --login-gradient-to: 215 20% 92%;
+
+    --badge-iss: 226 70% 55%;
+    --badge-iss-foreground: 0 0% 100%;
+  }
+
+  .dark {
+    --background: 220 20% 10%;
+    --foreground: 210 25% 90%;
+
+    --card: 220 18% 13%;
+    --card-foreground: 210 25% 90%;
+
+    --popover: 220 18% 15%;
+    --popover-foreground: 210 25% 90%;
+
+    --primary: 215 20% 55%;
+    --primary-foreground: 210 30% 95%;
+
+    --secondary: 220 16% 16%;
+    --secondary-foreground: 210 25% 85%;
+
+    --muted: 220 14% 18%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 220 16% 18%;
+    --accent-foreground: 210 25% 88%;
+
+    --destructive: 347 77% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --open: 215 16% 47%;
+    --open-foreground: 0 0% 100%;
+
+    --border: 220 14% 20%;
+    --input: 220 14% 20%;
+    --ring: 215 20% 55%;
+
+    --sidebar-background: 220 18% 11%;
+    --sidebar-foreground: 210 25% 88%;
+    --sidebar-primary: 215 20% 55%;
+    --sidebar-primary-foreground: 210 30% 95%;
+    --sidebar-accent: 220 16% 16%;
+    --sidebar-accent-foreground: 210 25% 88%;
+    --sidebar-border: 220 14% 20%;
+    --sidebar-ring: 215 20% 55%;
+
+    --kanban-column: 220 14% 14%;
+    --kanban-column-foreground: 210 25% 88%;
+
+    --login-gradient-from: 222 47% 11%;
+    --login-gradient-to: 215 28% 17%;
+
+    --badge-iss: 226 70% 55%;
+    --badge-iss-foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .kanban-column {
+    @apply bg-kanban-column rounded-xl;
+  }
+}
+
+@keyframes pulse-alert {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-pulse-alert {
+  animation: pulse-alert 2s ease-in-out infinite;
+}

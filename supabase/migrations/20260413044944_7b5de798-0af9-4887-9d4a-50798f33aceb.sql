@@ -1,0 +1,2 @@
+ALTER TABLE public.demandas ADD COLUMN obra_id uuid REFERENCES public.obras(id) DEFAULT NULL;
+ALTER TABLE public.demandas ADD COLUMN solicitante_id uuid REFERENCES public.solicitantes(id) DEFAULT NULL;

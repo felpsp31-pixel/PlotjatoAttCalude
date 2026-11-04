@@ -1,0 +1,2 @@
+ALTER TABLE public.obras
+  ADD COLUMN exemption_value NUMERIC NOT NULL DEFAULT 0;

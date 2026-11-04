@@ -1,0 +1,1 @@
+ALTER TABLE public.demandas ADD COLUMN valor_recibo numeric DEFAULT NULL;

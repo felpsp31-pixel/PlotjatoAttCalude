@@ -1,0 +1,1 @@
+ALTER TABLE public.recibos ALTER COLUMN cliente_id DROP NOT NULL;

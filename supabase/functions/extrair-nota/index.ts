@@ -8,6 +8,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const GEMINI_MODEL = "gemini-3.8-flash";
+
 const SYSTEM_PROMPT = `Extraia da nota fiscal brasileira (NFS-e) os seguintes dados:
 1. Valor Líquido da NFS-e (campo 'Valor Líquido da NFS-e', já descontado ISSQN retido — nunca usar o Valor do Serviço bruto)
 2. Data de vencimento no formato YYYY-MM-DD (geralmente na descrição do serviço como 'VENCIMENTO DD/MM/AAAA')
@@ -32,43 +34,42 @@ serve(async (req) => {
       );
     }
 
-    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
-    if (!OPENROUTER_API_KEY) {
-      throw new Error("OPENROUTER_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "file",
-                file: {
-                  filename: "nota-fiscal.pdf",
-                  file_data: `data:application/pdf;base64,${pdf_base64}`,
+    // API do Gemini direto no Google (camada gratuita, sem cartão).
+    // Se um dia o endpoint generateContent sair do ar, é só este bloco e a
+    // leitura da resposta logo abaixo que mudam.
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": GEMINI_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: "application/pdf",
+                    data: pdf_base64,
+                  },
                 },
-              },
-              {
-                type: "text",
-                text: "Extraia os dados desta nota fiscal NFS-e conforme instruído.",
-              },
-            ],
-          },
-        ],
-        // engine "native" usa a leitura de PDF do próprio modelo. Sem isso o
-        // OpenRouter pode cair num OCR cobrado por página.
-        plugins: [{ id: "file-parser", pdf: { engine: "native" } }],
-      }),
-    });
+                {
+                  text: `${SYSTEM_PROMPT}\n\nExtraia os dados desta nota fiscal NFS-e conforme instruído.`,
+                },
+              ],
+            },
+          ],
+          generationConfig: { temperature: 0.1 },
+        }),
+      },
+    );
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -77,14 +78,14 @@ serve(async (req) => {
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
+      if (response.status === 403) {
         return new Response(
-          JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao workspace." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Chave da IA inválida ou sem permissão. Verifique a GEMINI_API_KEY." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("Gemini API error:", response.status, errorText);
       return new Response(
         JSON.stringify({ error: "Erro ao processar o PDF com IA." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -92,7 +93,9 @@ serve(async (req) => {
     }
 
     const aiData = await response.json();
-    const content = aiData.choices?.[0]?.message?.content ?? "";
+    const content = aiData.candidates?.[0]?.content?.parts
+      ?.map((p: { text?: string }) => p.text ?? "")
+      .join("") ?? "";
 
     // Extract JSON from the response (handle markdown code blocks)
     let jsonStr = content.trim();

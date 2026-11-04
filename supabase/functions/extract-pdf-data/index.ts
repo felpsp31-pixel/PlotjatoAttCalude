@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+const GEMINI_MODEL = 'gemini-3.8-flash';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -12,9 +14,9 @@ serve(async (req) => {
   }
 
   try {
-    const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
-    if (!OPENROUTER_API_KEY) {
-      throw new Error('OPENROUTER_API_KEY is not configured');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY is not configured');
     }
 
     const formData = await req.formData();
@@ -38,20 +40,26 @@ serve(async (req) => {
     }
     const base64 = btoa(binary);
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    // API do Gemini direto no Google (camada gratuita, sem cartão).
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'x-goog-api-key': GEMINI_API_KEY,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
+        contents: [
           {
-            role: 'user',
-            content: [
+            parts: [
               {
-                type: 'text',
+                inline_data: {
+                  mime_type: 'application/pdf',
+                  data: base64,
+                },
+              },
+              {
                 text: `Analise este documento PDF (boleto ou nota fiscal) e extraia as seguintes informações:
 1. Valor total (em reais, apenas o número com decimais, ex: 1500.00)
 2. Data de vencimento (no formato YYYY-MM-DD)
@@ -66,30 +74,22 @@ Responda APENAS em JSON válido com este formato exato:
 
 Se não conseguir identificar algum campo, use null para esse campo.`,
               },
-              {
-                type: 'file',
-                file: {
-                  filename: file.name || 'documento.pdf',
-                  file_data: `data:application/pdf;base64,${base64}`,
-                },
-              },
             ],
           },
         ],
-        temperature: 0.1,
-        // engine "native" usa a leitura de PDF do próprio modelo. Sem isso o
-        // OpenRouter pode cair num OCR cobrado por página.
-        plugins: [{ id: 'file-parser', pdf: { engine: 'native' } }],
+        generationConfig: { temperature: 0.1 },
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`AI provider error [${response.status}]: ${errorText}`);
+      throw new Error(`Gemini API error [${response.status}]: ${errorText}`);
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    const content = data.candidates?.[0]?.content?.parts
+      ?.map((p: { text?: string }) => p.text ?? '')
+      .join('') || '';
 
     // Extract JSON from the response
     const jsonMatch = content.match(/\{[\s\S]*?\}/);

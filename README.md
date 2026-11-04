@@ -60,7 +60,7 @@ Em *Edge Functions → Secrets*:
 
 | Secret | Para que serve |
 | --- | --- |
-| `OPENROUTER_API_KEY` | Leitura de PDF por IA (NFS-e e boletos) |
+| `GEMINI_API_KEY` | Leitura de PDF por IA (NFS-e e boletos). Chave gratuita em aistudio.google.com |
 | `CLEANUP_SECRET` | Protege a função que apaga demandas antigas |
 | `ALLOWED_ORIGIN` | Domínio do frontend, para o CORS |
 | `VITE_SYSTEM_PASSWORD` | Senha de acesso ao sistema (fallback inicial) |

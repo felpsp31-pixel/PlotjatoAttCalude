@@ -49,22 +49,23 @@ const Dashboard = () => {
 
   const [casualClients, setCasualClients] = useState<Entity[]>([]);
 
-  useEffect(() => {
-    const fetchCasual = async () => {
-      const { data } = await supabase.from('clientes_avulsos' as any).select('*').order('created_at', { ascending: false });
-      if (data) {
-        setCasualClients((data as any[]).map(c => ({
-          id: c.id,
-          name: c.name,
-          type: 'casual' as const,
-          phone: c.phone || undefined,
-          email: c.email || undefined,
-          retainsISS: false,
-        })));
-      }
-    };
-    fetchCasual();
+  const fetchCasual = useCallback(async () => {
+    const { data } = await supabase.from('clientes_avulsos' as any).select('*').order('created_at', { ascending: false });
+    if (data) {
+      setCasualClients((data as any[]).map(c => ({
+        id: c.id,
+        name: c.name,
+        type: 'casual' as const,
+        phone: c.phone || undefined,
+        email: c.email || undefined,
+        retainsISS: false,
+      })));
+    }
   }, []);
+
+  useEffect(() => {
+    fetchCasual();
+  }, [fetchCasual]);
 
   const allEntities = useMemo<Entity[]>(() => {
     const merged = [...suppliers];
@@ -346,7 +347,9 @@ const Dashboard = () => {
                 } : undefined}
               />
               <div className="flex items-center gap-2 flex-wrap">
-                <ImportNotaFiscalDialog />
+                <ImportNotaFiscalDialog
+                  onImported={() => { refetch(); fetchCasual(); }}
+                />
                 <NewInvoiceDialog entityId={selectedEntity.id} onAdd={handleAdd} />
                 <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={signOut} title="Sair">
                   <LogOut className="h-4 w-4" />

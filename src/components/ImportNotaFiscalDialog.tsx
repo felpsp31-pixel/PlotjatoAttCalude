@@ -113,6 +113,82 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
     if (file) handleFile(file);
   };
 
+  // Normaliza nome para comparar: sem acento, sem pontuação, caixa baixa.
+  const norm = (s: string) =>
+    s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+  const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  /**
+   * Lança a nota no Financeiro. Casa o tomador com um cliente cadastrado;
+   * se não achar, registra como cliente avulso para o lançamento ter dono.
+   * Devolve um aviso quando algo ficou pendente, ou null se correu tudo bem.
+   */
+  const criarLancamentoFinanceiro = async (pdfUrl: string): Promise<string | null> => {
+    const tomador = editData.tomador?.trim();
+    const valor = editData.valor_liquido;
+    const vencimento = editData.vencimento;
+
+    if (!tomador) return 'Sem tomador identificado — não foi lançada no Financeiro.';
+    if (valor == null) return 'Sem valor identificado — não foi lançada no Financeiro.';
+    if (!vencimento) return 'Sem vencimento identificado — não foi lançada no Financeiro.';
+
+    try {
+      let entityId: string | null = null;
+      let entityName = tomador;
+
+      const { data: clientes } = await supabase.from('clientes').select('id, name');
+      const achado = (clientes ?? []).find((c) => norm(c.name) === norm(tomador));
+      if (achado) {
+        entityId = achado.id;
+        entityName = achado.name;
+      } else {
+        const { data: avulsos } = await supabase
+          .from('clientes_avulsos' as never).select('id, name');
+        const avulso = ((avulsos ?? []) as { id: string; name: string }[])
+          .find((c) => norm(c.name) === norm(tomador));
+        if (avulso) {
+          entityId = avulso.id;
+          entityName = avulso.name;
+        } else {
+          const { data: novo } = await supabase
+            .from('clientes_avulsos' as never)
+            .insert({ name: tomador } as never).select('id, name').single();
+          if (novo) {
+            entityId = (novo as { id: string }).id;
+          }
+        }
+      }
+
+      if (!entityId) return 'Não consegui vincular a um cliente — não foi lançada no Financeiro.';
+
+      // A coluna do kanban sai do vencimento: vencida vira Atrasado.
+      const hoje = new Date().toISOString().slice(0, 10);
+      const status = vencimento < hoje ? 'overdue' : 'open';
+
+      const d = new Date(vencimento + 'T00:00:00');
+      const referenceMonth = `${MESES[d.getMonth()]}/${d.getFullYear()}`;
+
+      const { error } = await supabase.from('financial_invoices').insert({
+        entity_id: entityId,
+        entity_name: entityName,
+        entity_type: 'client',
+        description: editData.numero_nfse ? `NFS-e ${editData.numero_nfse}` : 'NFS-e importada',
+        value: valor,
+        due_date: vencimento,
+        reference_month: referenceMonth,
+        status,
+        attachments: [{ url: pdfUrl, name: pdfFile?.name ?? 'nota.pdf', date: new Date().toISOString() }],
+      });
+      if (error) throw error;
+      return null;
+    } catch (err) {
+      console.error('Erro ao lançar no Financeiro:', err);
+      return 'Falhou ao lançar no Financeiro — confira o console.';
+    }
+  };
+
   const handleSave = async () => {
     if (!pdfFile) return;
 
@@ -144,7 +220,15 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
 
       if (insertError) throw insertError;
 
-      toast.success('Nota fiscal importada com sucesso!');
+      // Cria também o lançamento no Financeiro, para a nota aparecer no
+      // kanban. Sem isto a nota ficava só no arquivo de notas fiscais.
+      const aviso = await criarLancamentoFinanceiro(urlData.publicUrl);
+
+      toast.success(
+        aviso
+          ? `Nota importada. ${aviso}`
+          : 'Nota fiscal importada e lançada no Financeiro!',
+      );
       reset();
       setOpen(false);
       onImported?.();

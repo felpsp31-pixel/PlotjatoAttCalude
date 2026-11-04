@@ -33,7 +33,8 @@ async function callGemini(apiKey: string, body: unknown): Promise<Response> {
       body: JSON.stringify(body),
     });
     if (r.ok) return r;
-    if (r.status !== 503 && r.status !== 429) return r;
+    // 429 e cota estourada: insistir nao ajuda e so prende o usuario esperando.
+    if (r.status !== 503) return r;
     last = r;
     if (attempt < 2) await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
   }
@@ -73,27 +74,21 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Muitas requisições. Tente novamente em alguns segundos." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 403) {
-        return new Response(
-          JSON.stringify({ error: "Chave da IA inválida ou sem permissão. Verifique a GEMINI_API_KEY." }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       const errorText = await response.text();
       console.error("Gemini API error:", response.status, errorText);
+      const mensagens: Record<number, string> = {
+        429: "Cota da IA esgotada. Veja o detalhe para saber se e por minuto ou por dia.",
+        403: "Chave da IA invalida ou sem permissao. Verifique a GEMINI_API_KEY.",
+        404: `Modelo "${GEMINI_MODEL}" nao encontrado para esta chave. Troque o secret GEMINI_MODEL.`,
+      };
       return new Response(
         JSON.stringify({
-          error: "Erro ao processar o PDF com IA.",
+          error: mensagens[response.status] ?? "Erro ao processar o PDF com IA.",
           // detalhe do provedor, para diagnostico: nao contem a chave
-          detail: `[${response.status}] ${errorText.slice(0, 400)}`,
+          detail: `[${response.status}] ${errorText.slice(0, 500)}`,
         }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: response.status === 429 ? 429 : 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

@@ -22,7 +22,8 @@ async function callGemini(apiKey, body) {
       body: JSON.stringify(body),
     });
     if (r.ok) return r;
-    if (r.status !== 503 && r.status !== 429) return r;
+    // 429 e cota estourada: insistir nao ajuda e so prende o usuario esperando.
+    if (r.status !== 503) return r;
     last = r;
     if (attempt < 2) await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
   }

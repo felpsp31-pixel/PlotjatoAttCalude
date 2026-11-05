@@ -52,7 +52,14 @@ npx supabase functions deploy extrair-nota
 npx supabase functions deploy extract-pdf-data
 npx supabase functions deploy cleanup-demandas
 npx supabase functions deploy generate-monthly-invoices
+npx supabase functions deploy interpretar-demanda
+npx supabase functions deploy perguntar-financeiro
 ```
+
+As duas últimas são o assistente de IA: `interpretar-demanda` lê uma mensagem
+colada e devolve os campos da demanda; `perguntar-financeiro` responde
+perguntas em linguagem natural sobre os lançamentos, lendo o banco com a
+service role (o navegador manda só a pergunta).
 
 ### 5. Secrets
 
@@ -92,10 +99,10 @@ src/
   components/        Componentes compartilhados e UI (shadcn)
   contexts/          AuthContext e RecibosContext
   hooks/             useFinancialInvoices, useSuppliers
-  lib/               reciboPdf (geração do PDF em A5), utils
+  lib/               reciboPdf (PDF em A5), casarCliente, edgeError, utils
   pages/             Dashboard, Home, Login
   pages/recibos/     Emissão, Clientes, Serviços, Relatórios, Demandas
 supabase/
-  functions/         5 edge functions
+  functions/         7 edge functions
   migrations/        Schema e políticas de RLS
 ```

@@ -12,8 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, CalendarIcon, Search, Trash2, Edit, ArrowLeft, CheckCircle2, AlertTriangle, FileText, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Filter, X, PackageCheck, Phone } from 'lucide-react';
+import { Plus, CalendarIcon, Search, Trash2, Edit, ArrowLeft, CheckCircle2, AlertTriangle, FileText, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Filter, X, PackageCheck, Phone, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import DemandaIADialog, { type DemandaInterpretada } from '@/components/DemandaIADialog';
+import { casarCliente } from '@/lib/casarCliente';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -345,6 +347,68 @@ const DemandasPage = () => {
 
   const openAdd = () => { resetForm(); setDialogOpen(true); };
 
+  const [iaOpen, setIaOpen] = useState(false);
+
+  /**
+   * Preenche o formulário normal com o que a IA tirou da mensagem. Nada é
+   * gravado aqui: o salvamento continua passando pelo handleSave, com as
+   * mesmas validações de sempre.
+   */
+  const aplicarInterpretacao = (d: DemandaInterpretada, textoOriginal: string) => {
+    resetForm();
+
+    const achado = d.cliente ? casarCliente(d.cliente, null, clientes) : null;
+    if (achado) {
+      const cadastro = clientes.find((c) => c.id === achado.id);
+      setSelectedClienteId(achado.id);
+      setClienteNome(achado.name);
+      setClienteSearch(achado.name);
+      // Telefone e e-mail da mensagem valem mais que o cadastro: quem
+      // escreveu pode ter dado um contato novo.
+      setTelefone(d.telefone || cadastro?.phone || '');
+      setEmail(d.email || cadastro?.email || '');
+    } else if (d.cliente) {
+      setClienteNome(d.cliente);
+      setClienteSearch(d.cliente);
+      setTelefone(d.telefone || '');
+      setEmail(d.email || '');
+    }
+
+    if (d.servico) setServico(d.servico);
+    // Sem resumo da IA, guarda a mensagem crua: melhor um texto bruto do
+    // que um campo vazio.
+    setDescricao(d.descricao || textoOriginal);
+
+    if (d.prazo) {
+      // Montagem manual: new Date('2026-11-10') seria meia-noite UTC e, no
+      // fuso do Brasil, apareceria como dia 9.
+      const [ano, mes, dia] = d.prazo.split('-').map(Number);
+      if (ano && mes && dia) setPrazo(new Date(ano, mes - 1, dia));
+    }
+
+    if (d.responsavel) {
+      const r = responsaveis.find(
+        (x) => x.name.toLowerCase() === d.responsavel!.toLowerCase());
+      if (r) setResponsavelId(r.id);
+    }
+
+    if (d.prioridade) setPrioridade(d.prioridade);
+
+    setDialogOpen(true);
+
+    const faltando = [
+      !achado && d.cliente ? 'cliente não cadastrado' : null,
+      !d.servico ? 'serviço' : null,
+      !d.prazo ? 'prazo' : null,
+    ].filter(Boolean);
+    toast.info(
+      faltando.length
+        ? `Confira antes de salvar — não identifiquei: ${faltando.join(', ')}.`
+        : 'Confira os campos e salve.',
+      { duration: 8000 },
+    );
+  };
+
   const openEdit = (d: Demanda) => {
     setEditingId(d.id);
     setSelectedClienteId(d.cliente_id);
@@ -587,6 +651,16 @@ const DemandasPage = () => {
           </Popover>
           <Button variant="ghost" size="icon" className="min-h-[40px] min-w-[40px]" title="Pesquisar cliente">
             <Search className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => setIaOpen(true)}
+            variant="outline"
+            size={isMobile ? 'icon' : 'default'}
+            title="Criar demanda colando a mensagem do cliente"
+            className={isMobile ? 'min-h-[40px] min-w-[40px]' : 'gap-2 min-h-[44px]'}
+          >
+            <Sparkles className="h-4 w-4" />
+            {!isMobile && 'Criar com IA'}
           </Button>
           {isMobile ? (
             <Button onClick={openAdd} size="icon" className="min-h-[40px] min-w-[40px]">
@@ -1183,6 +1257,14 @@ const DemandasPage = () => {
         </DialogContent>
       </Dialog>
       </div>
+
+      <DemandaIADialog
+        open={iaOpen}
+        onOpenChange={setIaOpen}
+        servicos={servicos.map((x) => x.description)}
+        responsaveis={responsaveis.map((r) => r.name)}
+        onInterpretado={aplicarInterpretacao}
+      />
     </div>
   );
 };

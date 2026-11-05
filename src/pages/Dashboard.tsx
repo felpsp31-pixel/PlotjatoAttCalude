@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { LogOut, Receipt, PanelLeftClose, PanelLeftOpen, CalendarClock, Loader2 } from 'lucide-react';
+import { LogOut, Receipt, PanelLeftClose, PanelLeftOpen, CalendarClock, Loader2, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import ImportNotaFiscalDialog from '@/components/ImportNotaFiscalDialog';
+import AssistenteFinanceiro from '@/components/AssistenteFinanceiro';
 import { useRecibos } from '@/contexts/RecibosContext';
 import { useAuth } from '@/contexts/AuthContext';
 import EntitySidebar, { type SidebarTab } from '@/components/EntitySidebar';
@@ -74,6 +75,7 @@ const Dashboard = () => {
   // Apagar cliente avulso. Os lancamentos dele apontam para o seu id, entao
   // apagar so a entidade deixaria notas orfas, invisiveis em qualquer coluna:
   // o dialogo diz quantas sao e elas vao junto.
+  const [assistenteOpen, setAssistenteOpen] = useState(false);
   const [avulsoParaApagar, setAvulsoParaApagar] = useState<Entity | null>(null);
   const [apagando, setApagando] = useState(false);
 
@@ -302,6 +304,17 @@ const Dashboard = () => {
             {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
           </button>
           <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => setAssistenteOpen(true)}
+            title="Perguntar sobre o Financeiro"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">Perguntar à IA</span>
+            <span className="sm:hidden">IA</span>
+          </Button>
           <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1">
@@ -446,6 +459,8 @@ const Dashboard = () => {
           </div>
         </SheetContent>
       </Sheet>
+
+      <AssistenteFinanceiro open={assistenteOpen} onOpenChange={setAssistenteOpen} />
 
       <AlertDialog
         open={avulsoParaApagar !== null}

@@ -92,6 +92,18 @@ Qualquer host estático serve. Na Vercel, conecte o repositório, confirme o pre
 
 Depois do primeiro deploy, coloque o domínio gerado no secret `ALLOWED_ORIGIN` do Supabase.
 
+## Instalar como aplicativo
+
+O app tem manifesto e ícones, então Chrome e Edge o instalam como aplicativo
+de desktop: janela própria, ícone no menu Iniciar e atalho que pode ir para a
+inicialização do Windows.
+
+Não há service worker, de propósito. Ele ativaria o convite automático de
+instalação, mas fica registrado no navegador e um defeito nele pode deixar o
+sistema inacessível — instalar pelo menu do navegador dá no mesmo. O app
+também precisa de rede para falar com o Supabase, então não funcionaria
+offline de qualquer forma.
+
 ## Estrutura
 
 ```

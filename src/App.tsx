@@ -13,6 +13,7 @@ import FinanceiroGuard from "@/components/FinanceiroGuard";
 // Eager-load light pages (login + home) for instant first paint
 import LoginPage from "./pages/LoginPage";
 import HomePage from "./pages/HomePage";
+import AvisoAtualizacao from '@/components/AvisoAtualizacao';
 
 // Lazy-load heavy pages and layouts (jspdf, recharts, kanban, etc.)
 const FinanceiroLayout = lazy(() => import("@/components/FinanceiroLayout"));
@@ -67,6 +68,7 @@ const PageFallback = () => (
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <AvisoAtualizacao />
       <Toaster />
       <Sonner position="top-right" closeButton />
       <AuthProvider>

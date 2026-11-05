@@ -2,8 +2,31 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
+// Identidade desta build. Na Vercel vem o commit; fora dela, o relógio.
+// O app compara este valor com o de /version.json para saber que saiu
+// versão nova enquanto a janela estava aberta.
+const BUILD_ID =
+  process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? String(Date.now());
+
+/** Publica o build id num arquivo que o app busca de tempos em tempos. */
+function versionJson() {
+  return {
+    name: "version-json",
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "version.json",
+        source: JSON.stringify({ build: BUILD_ID }),
+      });
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
+  define: {
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   server: {
     host: "::",
     port: 8080,
@@ -11,7 +34,7 @@ export default defineConfig(() => ({
       overlay: false,
     },
   },
-  plugins: [react()],
+  plugins: [react(), versionJson()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

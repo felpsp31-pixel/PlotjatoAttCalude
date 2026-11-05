@@ -73,7 +73,7 @@ const InvoiceCard = ({ invoice, onMarkPaid, onDelete, onUpdate }: InvoiceCardPro
       {/* Linha 3: Botões de ação */}
       <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
-          <NfseCopiarDialog invoice={invoice} />
+          <NfseCopiarDialog invoice={invoice} onUpdate={onUpdate} />
           {hasAttachments && (
             <button
               onClick={() => setPreviewOpen(true)}

@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, CalendarIcon, Search, Trash2, Edit, ArrowLeft, CheckCircle2, AlertTriangle, FileText, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Filter, X, PackageCheck, Phone, Sparkles, MessageCircle } from 'lucide-react';
+import { Plus, CalendarIcon, Search, Trash2, Edit, ArrowLeft, CheckCircle2, AlertTriangle, FileText, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Filter, X, PackageCheck, Phone, Sparkles, MessageCircle, PieChart as PieChartIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import AtrasosDemandas from '@/components/AtrasosDemandas';
 import DemandaIADialog, { type DemandaInterpretada } from '@/components/DemandaIADialog';
 import { casarCliente } from '@/lib/casarCliente';
 import { linkAviso } from '@/lib/avisoWhatsapp';
@@ -107,6 +108,7 @@ const DemandasPage = () => {
   const isMobile = useIsMobile();
   const [demandas, setDemandas] = useState<Demanda[]>([]);
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
+  const [atrasosOpen, setAtrasosOpen] = useState(false);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [obrasAll, setObrasAll] = useState<{ id: string; name: string; cliente_id: string }[]>([]);
@@ -640,6 +642,15 @@ const DemandasPage = () => {
           <h1 className="text-xl font-bold text-foreground">Demandas</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Atrasos dos últimos 30 dias"
+            onClick={() => setAtrasosOpen(true)}
+            className="min-h-[40px] min-w-[40px]"
+          >
+            <PieChartIcon className="h-4 w-4" />
+          </Button>
           <ThemeToggle expanded={false} />
           <Popover open={filterOpen} onOpenChange={setFilterOpen}>
             <PopoverTrigger asChild>
@@ -1301,6 +1312,15 @@ const DemandasPage = () => {
         </DialogContent>
       </Dialog>
       </div>
+
+      <Dialog open={atrasosOpen} onOpenChange={setAtrasosOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Atrasos — últimos 30 dias</DialogTitle>
+          </DialogHeader>
+          {atrasosOpen && <AtrasosDemandas demandas={demandas} responsaveis={responsaveis} />}
+        </DialogContent>
+      </Dialog>
 
       <DemandaIADialog
         open={iaOpen}

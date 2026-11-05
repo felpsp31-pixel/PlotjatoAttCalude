@@ -13,6 +13,7 @@ import ClientsTable from '@/components/ClientsTable';
 import ExportResumoButton from '@/components/ExportResumoButton';
 import SupplierMonthlyResume from '@/components/SupplierMonthlyResume';
 import EvolucaoFinanceira from '@/components/EvolucaoFinanceira';
+import PreviaFechamento from '@/components/PreviaFechamento';
 import NewInvoiceDialog from '@/components/NewInvoiceDialog';
 import type { Entity } from '@/types/finance';
 import { useFinancialInvoices } from '@/hooks/useFinancialInvoices';
@@ -132,6 +133,7 @@ const Dashboard = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => isMobile);
   const [resumoOpen, setResumoOpen] = useState(false);
   const [evolucaoOpen, setEvolucaoOpen] = useState(false);
+  const [previaOpen, setPreviaOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('clients');
   const dragging = useRef(false);
 
@@ -432,6 +434,13 @@ const Dashboard = () => {
               >
                 Evolução
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setResumoOpen(false); setPreviaOpen(true); }}
+              >
+                Prévia do mês
+              </Button>
               <ExportResumoButton entities={allEntities} invoices={invoices} />
             </div>
           </SheetHeader>
@@ -439,6 +448,22 @@ const Dashboard = () => {
             <ClientsTable entities={allEntities} invoices={invoices} />
             <SupplierMonthlyResume entities={allEntities} invoices={invoices} />
           </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={previaOpen} onOpenChange={setPreviaOpen}>
+        <SheetContent side="left" className="w-full sm:w-[520px] sm:max-w-none overflow-y-auto">
+          <SheetHeader className="flex flex-row items-center justify-between pr-8 flex-wrap gap-2 mb-4">
+            <SheetTitle>Prévia do fechamento</SheetTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setPreviaOpen(false); setResumoOpen(true); }}
+            >
+              ← Resumo
+            </Button>
+          </SheetHeader>
+          {previaOpen && <PreviaFechamento />}
         </SheetContent>
       </Sheet>
 

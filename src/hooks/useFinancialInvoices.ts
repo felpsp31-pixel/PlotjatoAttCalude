@@ -30,6 +30,8 @@ export function useFinancialInvoices() {
       referenceMonth: row.reference_month,
       status: row.status as Invoice['status'],
       attachments: (row.attachments as unknown as Attachment[]) || [],
+      nfseNumero: row.nfse_numero,
+      nfseEmitidaAt: row.nfse_emitida_at,
     }));
 
     const today = new Date().toISOString().slice(0, 10);
@@ -96,6 +98,8 @@ export function useFinancialInvoices() {
       if (data.status !== undefined) dbData.status = data.status;
       if (data.referenceMonth !== undefined) dbData.reference_month = data.referenceMonth;
       if (data.attachments !== undefined) dbData.attachments = data.attachments;
+      if (data.nfseNumero !== undefined) dbData.nfse_numero = data.nfseNumero;
+      if (data.nfseEmitidaAt !== undefined) dbData.nfse_emitida_at = data.nfseEmitidaAt;
       if (Object.keys(dbData).length > 0) {
         await supabase.from('financial_invoices').update(dbData).eq('id', invoiceId);
       }

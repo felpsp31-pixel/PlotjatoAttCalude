@@ -235,6 +235,37 @@ export type Database = {
         }
         Relationships: []
       }
+      demandas_concluidas: {
+        Row: {
+          atrasada: boolean | null
+          cliente_nome: string | null
+          concluido_at: string
+          demanda_id: string
+          prazo: string | null
+          responsavel_id: string | null
+          responsavel_nome: string | null
+          servico: string | null
+        }
+        Insert: {
+          cliente_nome?: string | null
+          concluido_at: string
+          demanda_id: string
+          prazo?: string | null
+          responsavel_id?: string | null
+          responsavel_nome?: string | null
+          servico?: string | null
+        }
+        Update: {
+          cliente_nome?: string | null
+          concluido_at?: string
+          demanda_id?: string
+          prazo?: string | null
+          responsavel_id?: string | null
+          responsavel_nome?: string | null
+          servico?: string | null
+        }
+        Relationships: []
+      }
       financial_invoices: {
         Row: {
           attachments: Json
@@ -245,6 +276,8 @@ export type Database = {
           entity_name: string
           entity_type: string
           id: string
+          nfse_emitida_at: string | null
+          nfse_numero: string | null
           reference_month: string
           status: string
           value: number
@@ -258,6 +291,8 @@ export type Database = {
           entity_name: string
           entity_type?: string
           id?: string
+          nfse_emitida_at?: string | null
+          nfse_numero?: string | null
           reference_month: string
           status?: string
           value?: number
@@ -271,6 +306,8 @@ export type Database = {
           entity_name?: string
           entity_type?: string
           id?: string
+          nfse_emitida_at?: string | null
+          nfse_numero?: string | null
           reference_month?: string
           status?: string
           value?: number

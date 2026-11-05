@@ -15,6 +15,8 @@ export interface Invoice {
   referenceMonth: string;
   status: InvoiceStatus;
   attachments: Attachment[];
+  nfseNumero?: string | null;
+  nfseEmitidaAt?: string | null;
 }
 
 export interface Entity {

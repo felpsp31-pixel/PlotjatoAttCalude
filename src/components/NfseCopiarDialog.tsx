@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, FileText, Loader2, ExternalLink } from "lucide-react";
+import { Copy, FileText, Loader2, ExternalLink, CheckCircle2, Upload, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Invoice } from "@/types/finance";
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const EMISSOR_URL = "https://www.nfse.gov.br/EmissorNacional/";
 
@@ -48,8 +49,53 @@ function Campo({ rotulo, valor, multilinha }: { rotulo: string; valor: string; m
 
 // Botao do card de lancamento. So aparece nos lancamentos do fechamento
 // mensal ("Recibos - Mmm/AAAA"), que sao os que viram NFS-e.
-const NfseCopiarDialog = ({ invoice }: { invoice: Invoice }) => {
+interface Props {
+  invoice: Invoice;
+  onUpdate?: (id: string, data: Partial<Invoice>) => void;
+}
+
+const NfseCopiarDialog = ({ invoice, onUpdate }: Props) => {
   const [open, setOpen] = useState(false);
+  const [numero, setNumero] = useState("");
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const emitida = !!invoice.nfseEmitidaAt;
+
+  const registrarEmissao = async () => {
+    if (!onUpdate) return;
+    if (!numero.trim()) {
+      toast.error("Informe o número da NFS-e.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      const anexos = [...invoice.attachments];
+      if (arquivo) {
+        if (arquivo.size > 10 * 1024 * 1024) throw new Error("PDF muito grande. Máximo 10MB.");
+        const caminho = `${invoice.id}/${Date.now()}-${arquivo.name}`;
+        const { error } = await supabase.storage.from("notas-fiscais").upload(caminho, arquivo);
+        if (error) throw error;
+        const { data } = supabase.storage.from("notas-fiscais").getPublicUrl(caminho);
+        anexos.push({ url: data.publicUrl, name: `NFS-e ${numero.trim()}.pdf`, date: new Date().toISOString() });
+      }
+      onUpdate(invoice.id, {
+        nfseNumero: numero.trim(),
+        nfseEmitidaAt: new Date().toISOString(),
+        attachments: anexos,
+      });
+      setOpen(false);
+      setNumero("");
+      setArquivo(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao registrar a NFS-e.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const desfazerEmissao = () => {
+    onUpdate?.(invoice.id, { nfseNumero: null, nfseEmitidaAt: null });
+  };
   const [carregando, setCarregando] = useState(false);
   const [dados, setDados] = useState<DadosNfse | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -102,8 +148,17 @@ const NfseCopiarDialog = ({ invoice }: { invoice: Invoice }) => {
         title="Dados para emitir a NFS-e"
         className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
       >
-        <FileText className="h-3.5 w-3.5" />
-        NFS-e
+        {emitida ? (
+          <span className="flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-success">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            NFS-e {invoice.nfseNumero}
+          </span>
+        ) : (
+          <>
+            <FileText className="h-3.5 w-3.5" />
+            NFS-e
+          </>
+        )}
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -145,6 +200,45 @@ const NfseCopiarDialog = ({ invoice }: { invoice: Invoice }) => {
                   </a>
                 </Button>
               </div>
+
+              {onUpdate && (
+                <div className="mt-2 space-y-2 border-t pt-3">
+                  {emitida ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-success">
+                        NFS-e nº {invoice.nfseNumero} emitida em{" "}
+                        {new Date(invoice.nfseEmitidaAt!).toLocaleDateString("pt-BR")}.
+                      </p>
+                      <Button variant="ghost" size="sm" onClick={desfazerEmissao}>
+                        <Undo2 className="h-4 w-4 mr-1" /> Desfazer
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs font-medium text-muted-foreground">Depois de emitir no portal</p>
+                      <Input
+                        placeholder="Número da NFS-e"
+                        value={numero}
+                        onChange={(e) => setNumero(e.target.value)}
+                      />
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/40">
+                        <Upload className="h-4 w-4" />
+                        <span className="truncate">{arquivo ? arquivo.name : "Anexar PDF da nota (opcional)"}</span>
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          className="hidden"
+                          onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      <Button size="sm" className="w-full" onClick={registrarEmissao} disabled={salvando}>
+                        {salvando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+                        Marcar como emitida
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

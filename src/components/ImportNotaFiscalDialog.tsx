@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDoErro } from '@/lib/edgeError';
+import { casarCliente } from '@/lib/casarCliente';
 
 interface ExtractedNfse {
   valor_liquido: number | null;
@@ -14,6 +15,7 @@ interface ExtractedNfse {
   issqn_retido: number | null;
   tomador: string | null;
   numero_nfse: string | null;
+  cnpj_tomador: string | null;
 }
 
 interface ImportNotaFiscalDialogProps {
@@ -87,6 +89,7 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
         issqn_retido: data.issqn_retido ?? null,
         tomador: data.tomador ?? null,
         numero_nfse: data.numero_nfse ?? null,
+        cnpj_tomador: data.cnpj_tomador ?? null,
       };
 
       setExtracted(result);
@@ -116,11 +119,6 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
     if (file) handleFile(file);
   };
 
-  // Normaliza nome para comparar: sem acento, sem pontuação, caixa baixa.
-  const norm = (s: string) =>
-    s.normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-
   const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
   /**
@@ -128,43 +126,54 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
    * se não achar, registra como cliente avulso para o lançamento ter dono.
    * Devolve um aviso quando algo ficou pendente, ou null se correu tudo bem.
    */
-  const criarLancamentoFinanceiro = async (pdfUrl: string): Promise<string | null> => {
+  const criarLancamentoFinanceiro = async (
+    pdfUrl: string,
+  ): Promise<{ aviso: string | null; destino: string | null }> => {
     const tomador = editData.tomador?.trim();
     const valor = editData.valor_liquido;
     const vencimento = editData.vencimento;
 
-    if (!tomador) return 'Sem tomador identificado — não foi lançada no Financeiro.';
-    if (valor == null) return 'Sem valor identificado — não foi lançada no Financeiro.';
-    if (!vencimento) return 'Sem vencimento identificado — não foi lançada no Financeiro.';
+    if (!tomador) return { aviso: 'Sem tomador identificado — não foi lançada no Financeiro.', destino: null };
+    if (valor == null) return { aviso: 'Sem valor identificado — não foi lançada no Financeiro.', destino: null };
+    if (!vencimento) return { aviso: 'Sem vencimento identificado — não foi lançada no Financeiro.', destino: null };
 
     try {
       let entityId: string | null = null;
       let entityName = tomador;
+      let entityType: 'client' | 'casual' = 'client';
 
-      const { data: clientes } = await supabase.from('clientes').select('id, name');
-      const achado = (clientes ?? []).find((c) => norm(c.name) === norm(tomador));
+      const { data: clientes, error: erroClientes } = await supabase
+        .from('clientes').select('id, name, cnpj');
+      if (erroClientes) throw erroClientes;
+
+      const achado = casarCliente(tomador, editData.cnpj_tomador, clientes ?? []);
       if (achado) {
         entityId = achado.id;
         entityName = achado.name;
       } else {
-        const { data: avulsos } = await supabase
+        const { data: avulsos, error: erroAvulsos } = await supabase
           .from('clientes_avulsos' as never).select('id, name');
-        const avulso = ((avulsos ?? []) as { id: string; name: string }[])
-          .find((c) => norm(c.name) === norm(tomador));
+        if (erroAvulsos) throw erroAvulsos;
+
+        const avulso = casarCliente(
+          tomador, null, (avulsos ?? []) as { id: string; name: string }[]);
+        entityType = 'casual';
         if (avulso) {
           entityId = avulso.id;
           entityName = avulso.name;
         } else {
-          const { data: novo } = await supabase
+          // Nenhum cliente bateu: registra como avulso para o lancamento ter
+          // dono. O erro deixa de ser engolido -- sem isso, uma falha de RLS
+          // virava "nao consegui vincular" e escondia a causa.
+          const { data: novo, error: erroNovo } = await supabase
             .from('clientes_avulsos' as never)
             .insert({ name: tomador } as never).select('id, name').single();
-          if (novo) {
-            entityId = (novo as { id: string }).id;
-          }
+          if (erroNovo) throw erroNovo;
+          if (novo) entityId = (novo as { id: string }).id;
         }
       }
 
-      if (!entityId) return 'Não consegui vincular a um cliente — não foi lançada no Financeiro.';
+      if (!entityId) return { aviso: 'Não consegui vincular a um cliente — não foi lançada no Financeiro.', destino: null };
 
       // A coluna do kanban sai do vencimento: vencida vira Atrasado.
       const hoje = new Date().toISOString().slice(0, 10);
@@ -176,7 +185,7 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
       const { error } = await supabase.from('financial_invoices').insert({
         entity_id: entityId,
         entity_name: entityName,
-        entity_type: 'client',
+        entity_type: entityType,
         description: editData.numero_nfse ? `NFS-e ${editData.numero_nfse}` : 'NFS-e importada',
         value: valor,
         due_date: vencimento,
@@ -185,11 +194,15 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
         attachments: [{ url: pdfUrl, name: pdfFile?.name ?? 'nota.pdf', date: new Date().toISOString() }],
       });
       if (error) throw error;
-      return null;
+      return {
+        aviso: null,
+        destino: entityType === 'casual'
+          ? `${entityName} (cliente avulso)` : entityName,
+      };
     } catch (err) {
       console.error('Erro ao lançar no Financeiro:', err);
       const motivo = err instanceof Error ? err.message : String(err);
-      return `Falhou ao lançar no Financeiro: ${motivo}`;
+      return { aviso: `Falhou ao lançar no Financeiro: ${motivo}`, destino: null };
     }
   };
 
@@ -236,13 +249,17 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
 
       // Cria também o lançamento no Financeiro, para a nota aparecer no
       // kanban. Sem isto a nota ficava só no arquivo de notas fiscais.
-      const aviso = await criarLancamentoFinanceiro(urlData.publicUrl);
+      const { aviso, destino } = await criarLancamentoFinanceiro(urlData.publicUrl);
 
-      toast.success(
-        aviso
-          ? `Nota importada. ${aviso}`
-          : 'Nota fiscal importada e lançada no Financeiro!',
-      );
+      if (aviso) {
+        // Antes isto saia como toast verde de sucesso, o que fazia a pessoa
+        // procurar na coluna um lancamento que nunca chegou la.
+        toast.warning(`Nota arquivada, mas: ${aviso}`, { duration: 15000 });
+      } else {
+        // Dizer em qual cliente entrou evita a procura no item errado da
+        // barra lateral quando a razao social da nota nao bate com o cadastro.
+        toast.success(`Nota lançada no Financeiro em "${destino}".`, { duration: 8000 });
+      }
       reset();
       setOpen(false);
       onImported?.();

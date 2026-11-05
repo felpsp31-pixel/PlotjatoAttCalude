@@ -12,10 +12,11 @@ const SYSTEM_PROMPT = `Extraia da nota fiscal brasileira (NFS-e) os seguintes da
 1. Valor Líquido da NFS-e (campo 'Valor Líquido da NFS-e', já descontado ISSQN retido — nunca usar o Valor do Serviço bruto)
 2. Data de vencimento no formato YYYY-MM-DD (geralmente na descrição do serviço como 'VENCIMENTO DD/MM/AAAA')
 3. ISSQN retido (número decimal, ou null se não houver retenção)
-4. Nome do tomador do serviço
+4. Nome do tomador do serviço (razão social, como está na nota)
 5. Número da NFS-e
+6. CNPJ do tomador, só os dígitos, sem pontos, barras ou traços
 Se não encontrar algum campo, use null. Responda SOMENTE em JSON válido, sem texto adicional:
-{"valor_liquido": 700.48, "vencimento": "2025-03-10", "issqn_retido": 17.52, "tomador": "NOME DA EMPRESA", "numero_nfse": "200"}`;
+{"valor_liquido": 700.48, "vencimento": "2025-03-10", "issqn_retido": 17.52, "tomador": "NOME DA EMPRESA", "numero_nfse": "200", "cnpj_tomador": "12345678000190"}`;
 
 // Nomes de modelo do Gemini mudam e saem do ar sem aviso. Em vez de chumbar
 // um nome e quebrar quando ele sai, a funcao pergunta ao Google quais modelos

@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { isPasswordCached, cachePassword } from '@/lib/passwordCache';
 import ThemeToggle from '@/components/ThemeToggle';
+import ResumoDoDia from '@/components/ResumoDoDia';
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -83,6 +84,8 @@ const HomePage = () => {
           className="h-16 sm:h-24 w-auto object-contain"
         />
       </div>
+      <ResumoDoDia />
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl w-full">
         <Card className="flex flex-col items-center text-center">
           <CardHeader>

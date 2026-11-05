@@ -81,10 +81,14 @@ As senhas em `app_settings` são guardadas como hash bcrypt. Na primeira vez que
 
 ### 6. Rotinas agendadas
 
-Ative as extensões `pg_cron` e `pg_net` em *Database → Extensions* e agende as duas funções com `cron.schedule()`, apontando para as URLs do seu projeto:
+Ative as extensões `pg_cron` e `pg_net` em *Database → Extensions* e rode
+`supabase/cron.sql` no **SQL Editor** — não como migration: ele precisa da
+service role key, que não pode ser commitada.
 
-- `cleanup-demandas` — apaga demandas concluídas há mais de 48 horas
-- `generate-monthly-invoices` — gera as faturas do mês a partir dos recibos emitidos
+- `generate-monthly-invoices` — todo dia 1 às 09:00 UTC (06:00 em Brasília),
+  junta os recibos do mês anterior num lançamento por cliente. Idempotente:
+  rodar de novo não duplica.
+- `cleanup-demandas` — diária, apaga demandas concluídas há mais de 48 horas
 
 ## Deploy do frontend
 

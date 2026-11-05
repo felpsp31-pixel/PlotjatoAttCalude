@@ -8,8 +8,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.1-flash";
-
 const SYSTEM_PROMPT = `Extraia da nota fiscal brasileira (NFS-e) os seguintes dados:
 1. Valor Líquido da NFS-e (campo 'Valor Líquido da NFS-e', já descontado ISSQN retido — nunca usar o Valor do Serviço bruto)
 2. Data de vencimento no formato YYYY-MM-DD (geralmente na descrição do serviço como 'VENCIMENTO DD/MM/AAAA')
@@ -19,26 +17,108 @@ const SYSTEM_PROMPT = `Extraia da nota fiscal brasileira (NFS-e) os seguintes da
 Se não encontrar algum campo, use null. Responda SOMENTE em JSON válido, sem texto adicional:
 {"valor_liquido": 700.48, "vencimento": "2025-03-10", "issqn_retido": 17.52, "tomador": "NOME DA EMPRESA", "numero_nfse": "200"}`;
 
-// O Gemini responde 503 UNAVAILABLE quando o modelo esta sobrecarregado, o
-// que e comum na camada gratuita. Nesses casos vale reenviar: costuma passar
-// na segunda tentativa. 429 (cota por minuto) segue a mesma logica.
-async function callGemini(apiKey: string, body: unknown): Promise<Response> {
-  const endpoint =
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-  let last: Response | null = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const r = await fetch(endpoint, {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (r.ok) return r;
-    // 429 e cota estourada: insistir nao ajuda e so prende o usuario esperando.
-    if (r.status !== 503) return r;
-    last = r;
-    if (attempt < 2) await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+// Nomes de modelo do Gemini mudam e saem do ar sem aviso. Em vez de chumbar
+// um nome e quebrar quando ele sai, a funcao pergunta ao Google quais modelos
+// esta chave pode usar e vai descendo a lista ate um responder. O secret
+// GEMINI_MODEL continua valendo como primeira escolha, mas deixa de ser
+// obrigatorio: sem ele, a funcao se resolve sozinha.
+const MODELO_PREFERIDO = Deno.env.get("GEMINI_MODEL") ?? "";
+// Lembra entre invocacoes qual modelo respondeu, para nao listar toda vez.
+let modeloEmUso: string | null = MODELO_PREFERIDO || null;
+
+const ORDEM: RegExp[] = [
+  /^gemini-flash-latest$/,
+  /flash/,
+  /^gemini-pro-latest$/,
+  /pro/,
+];
+
+// Primeiro o tipo (flash antes de pro, por velocidade e cota gratuita),
+// depois estavel antes de preview/lite, depois a geracao mais nova. Um alias
+// sem numero ("gemini-flash-latest") conta como o mais novo de todos.
+function nota(n: string) {
+  let tier = ORDEM.length;
+  for (let i = 0; i < ORDEM.length; i++) {
+    if (ORDEM[i].test(n)) { tier = i; break; }
   }
-  return last as Response;
+  const m = n.match(/gemini-([0-9]+(?:\.[0-9]+)?)/);
+  return {
+    tier,
+    penal: /lite|preview|exp|thinking/.test(n) ? 1 : 0,
+    ver: m ? parseFloat(m[1]) : 99,
+  };
+}
+
+async function listarModelos(apiKey: string): Promise<string[]> {
+  const r = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+    { headers: { "x-goog-api-key": apiKey } },
+  );
+  if (!r.ok) return [];
+  const j = await r.json();
+  const nomes: string[] = (j.models ?? [])
+    .filter((m: { supportedGenerationMethods?: string[] }) =>
+      (m.supportedGenerationMethods ?? []).includes("generateContent"))
+    .map((m: { name: string }) => m.name.replace("models/", ""))
+    .filter((n: string) =>
+      !n.includes("embedding") && !n.includes("aqa") && !n.includes("image"));
+  return nomes.sort((a, b) => {
+    const A = nota(a), B = nota(b);
+    return A.tier - B.tier || A.penal - B.penal || B.ver - A.ver ||
+      a.localeCompare(b);
+  });
+}
+
+// 404 = nome de modelo que nao existe mais: troca de modelo e repete.
+// 503 = modelo sobrecarregado, comum na camada gratuita: reenviar resolve.
+// 429 = cota estourada: insistir nao ajuda e so prende o usuario esperando.
+async function callGemini(apiKey: string, body: unknown): Promise<Response> {
+  const tentados = new Set<string>();
+  let candidatos: string[] | null = null;
+  let ultima: Response | null = null;
+
+  const proximoModelo = async (): Promise<string | null> => {
+    if (modeloEmUso && !tentados.has(modeloEmUso)) return modeloEmUso;
+    if (candidatos === null) candidatos = await listarModelos(apiKey);
+    return candidatos.find((n) => !tentados.has(n)) ?? null;
+  };
+
+  for (let troca = 0; troca < 6; troca++) {
+    const modelo = await proximoModelo();
+    if (!modelo) break;
+    tentados.add(modelo);
+
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
+        {
+          method: "POST",
+          headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      if (r.ok) {
+        if (modelo !== modeloEmUso) console.log(`usando o modelo "${modelo}"`);
+        modeloEmUso = modelo;
+        return r;
+      }
+      if (r.status === 404) {
+        console.log(`modelo "${modelo}" indisponivel; tentando o proximo`);
+        ultima = r;
+        break;
+      }
+      if (r.status !== 503) return r;
+      ultima = r;
+      if (tentativa < 2) await new Promise((res) => setTimeout(res, 1500 * (tentativa + 1)));
+    }
+    // Sobrecarga nao se resolve trocando de modelo: para aqui.
+    if (ultima && ultima.status === 503) return ultima;
+  }
+
+  return ultima ?? new Response(
+    JSON.stringify({ error: { message: "Nenhum modelo de IA respondeu." } }),
+    { status: 503 },
+  );
 }
 
 serve(async (req) => {
@@ -79,24 +159,14 @@ serve(async (req) => {
       const mensagens: Record<number, string> = {
         429: "Cota da IA esgotada. Veja o detalhe para saber se e por minuto ou por dia.",
         403: "Chave da IA invalida ou sem permissao. Verifique a GEMINI_API_KEY.",
-        404: `Modelo "${GEMINI_MODEL}" nao encontrado para esta chave. Troque o secret GEMINI_MODEL.`,
+        404: "Nenhum modelo de IA compativel esta disponivel para esta chave.",
       };
-      // Modelo inexistente: pergunta ao Google quais a chave pode usar, em
-      // vez de deixar a pessoa adivinhando nomes.
+      // Em 404 depois da redescoberta, mostra o que a chave realmente tem,
+      // para o diagnostico nao depender de adivinhar nomes.
       let disponiveis: string[] | undefined;
       if (response.status === 404) {
         try {
-          const lr = await fetch(
-            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
-            { headers: { "x-goog-api-key": GEMINI_API_KEY } },
-          );
-          if (lr.ok) {
-            const lj = await lr.json();
-            disponiveis = (lj.models ?? [])
-              .filter((m: { supportedGenerationMethods?: string[] }) =>
-                (m.supportedGenerationMethods ?? []).includes("generateContent"))
-              .map((m: { name: string }) => m.name.replace("models/", ""));
-          }
+          disponiveis = await listarModelos(GEMINI_API_KEY);
         } catch (e) {
           console.error("ListModels falhou:", e);
         }
@@ -107,7 +177,8 @@ serve(async (req) => {
           error: mensagens[response.status] ?? "Erro ao processar o PDF com IA.",
           // detalhe do provedor, para diagnostico: nao contem a chave
           detail: `[${response.status}] ${errorText.slice(0, 500)}`,
-          ...(disponiveis ? { modelos_disponiveis: disponiveis } : {}),
+          modelo: modeloEmUso,
+          ...(disponiveis?.length ? { modelos_disponiveis: disponiveis } : {}),
         }),
         { status: response.status === 429 ? 429 : 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" } }

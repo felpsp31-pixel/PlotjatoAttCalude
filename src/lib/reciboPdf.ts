@@ -24,6 +24,8 @@ export interface ReciboPdfContext {
   obra?: Obra;
   empresaInfo: EmpresaInfo;
   isPago?: boolean;
+  /** 'orcamento' imprime ORÇAMENTO sem número, sem carimbo nem assinatura. */
+  tipo?: 'recibo' | 'orcamento';
   /** Forma de pagamento impressa sob o carimbo PAGO: PIX, Dinheiro ou Cartão. */
   formaPagamento?: string;
   /** Rótulo do desconto, ex.: "Desconto (10%):". Padrão: "Desconto:" */
@@ -36,10 +38,10 @@ export interface ReciboPdfContext {
  */
 export const buildReciboFileName = (
   r: Recibo,
-  ctx: Pick<ReciboPdfContext, 'cliente' | 'obra'>,
+  ctx: Pick<ReciboPdfContext, 'cliente' | 'obra' | 'tipo'>,
 ) => {
   const clienteName = ctx.cliente?.name || r.clienteAvulso || 'Cliente Avulso';
-  const parts = [r.number, clienteName];
+  const parts = [ctx.tipo === 'orcamento' ? 'Orçamento' : r.number, clienteName];
   if (ctx.obra?.name) parts.push(ctx.obra.name);
   const safe = parts
     .join(' - ')
@@ -57,7 +59,8 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a5' });
 
-  const { cliente, solicitante, obra, empresaInfo, isPago, formaPagamento } = ctx;
+  const { cliente, solicitante, obra, empresaInfo, isPago, formaPagamento, tipo } = ctx;
+  const orcamento = tipo === 'orcamento';
   const clienteName = cliente?.name || r.clienteAvulso || 'Cliente Avulso';
 
   const subtotal = r.lines.reduce((s, l) => s + l.total, 0);
@@ -126,7 +129,7 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text(`RECIBO Nº ${r.number}`, left, y);
+    doc.text(orcamento ? 'ORÇAMENTO' : `RECIBO Nº ${r.number}`, left, y);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.text(formatDate(r.date), right, y, { align: 'right' });
@@ -191,7 +194,13 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
     cy += 5;
 
     // Assinatura / carimbo ancorados na base da via, para a metade não ficar vazia
-    if (isPago) {
+    if (orcamento) {
+      const notaY = Math.min(Math.max(cy + 12, PAGE_H - 16), PAGE_H - 9);
+      doc.setFontSize(6.5);
+      doc.setTextColor(110);
+      doc.text('Orçamento sujeito a confirmação. Este documento não é recibo e não comprova pagamento.', left + innerW / 2, notaY, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+    } else if (isPago) {
       const stampY = Math.min(Math.max(cy + 12, PAGE_H - 26), PAGE_H - 12);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(22);

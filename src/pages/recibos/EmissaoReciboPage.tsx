@@ -24,7 +24,10 @@ const FORMAS_PAGAMENTO = ['PIX', 'Dinheiro', 'Cartão'] as const;
 const emptyLines = (): LinhaRecibo[] =>
   Array.from({ length: 10 }, () => ({ serviceCode: '', description: '', quantity: 0, unitPrice: 0, total: 0 }));
 
-const EmissaoReciboPage = () => {
+// modo 'orcamento': mesma tela e mesmo PDF, mas nao salva nada, nao consome
+// numeracao e nao tem Pago. So exporta/imprime para enviar ao cliente.
+const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' }) => {
+  const orcamento = modo === 'orcamento';
   const location = useLocation();
   const { clientes, solicitantes, obras, servicos, clientServices, recibos, addRecibo, empresaInfo, loading } = useRecibos();
   const [clienteId, setClienteId] = useState('');
@@ -197,17 +200,24 @@ const EmissaoReciboPage = () => {
     });
   };
 
-  const handleSave = async () => {
-    if (!clienteId && !clienteAvulso.trim()) { toast.error('Selecione ou digite um cliente.'); return; }
+  // Valida o formulario e devolve linhas e total; null (com aviso) se faltar algo.
+  const montarDocumento = () => {
+    if (!clienteId && !clienteAvulso.trim()) { toast.error('Selecione ou digite um cliente.'); return null; }
     const validLines = lines.filter(l => l.serviceCode && l.quantity > 0);
-    if (validLines.length === 0) { toast.error('Adicione ao menos um serviço.'); return; }
+    if (validLines.length === 0) { toast.error('Adicione ao menos um serviço.'); return null; }
     const personalizadaIncompleta = validLines.find(l => l.serviceCode === CODIGO_PERSONALIZADO && (!l.description.trim() || l.unitPrice <= 0));
-    if (isPago && !formaPagamento) { toast.error('Escolha a forma de pagamento.'); return; }
-    if (personalizadaIncompleta) { toast.error('No serviço personalizado (código 0), preencha a descrição e o valor.'); return; }
+    if (!orcamento && isPago && !formaPagamento) { toast.error('Escolha a forma de pagamento.'); return null; }
+    if (personalizadaIncompleta) { toast.error('No serviço personalizado (código 0), preencha a descrição e o valor.'); return null; }
     const sub = validLines.reduce((s, l) => s + l.total, 0);
     const v = parseFloat(discountInput.replace(',', '.')) || 0;
     const desc = !hasDiscount ? 0 : discountType === 'percent' ? Math.min(sub, (sub * v) / 100) : Math.min(sub, v);
-    const total = Math.max(0, sub - desc);
+    return { validLines, total: Math.max(0, sub - desc) };
+  };
+
+  const handleSave = async () => {
+    const montado = montarDocumento();
+    if (!montado) return;
+    const { validLines, total } = montado;
     const recibo = addRecibo({
       date: new Date().toISOString().slice(0, 10),
       clienteId: clienteId || '',
@@ -244,6 +254,41 @@ const EmissaoReciboPage = () => {
       ? `Desconto (${parseFloat(discountInput.replace(',', '.')) || 0}%):`
       : 'Desconto:',
   });
+
+  // Orcamento: PDF direto do formulario, sem salvar e sem numero.
+  const orcamentoPdf = async () => {
+    const montado = montarDocumento();
+    if (!montado) return null;
+    const doc = {
+      id: 'orcamento', number: '', date: new Date().toISOString().slice(0, 10),
+      clienteId: clienteId || '', clienteAvulso: clienteId ? undefined : clienteAvulso.trim(),
+      solicitanteId, obraId, lines: montado.validLines, total: montado.total,
+    };
+    const ctx = {
+      cliente: clientes.find(c => c.id === clienteId),
+      solicitante: solicitantes.find(s => s.id === solicitanteId),
+      obra: obras.find(o => o.id === obraId),
+      empresaInfo,
+      tipo: 'orcamento' as const,
+      descontoLabel: hasDiscount && discountType === 'percent'
+        ? `Desconto (${parseFloat(discountInput.replace(',', '.')) || 0}%):`
+        : 'Desconto:',
+    };
+    return { pdf: await generateReciboPdf(doc, ctx), nome: buildReciboFileName(doc, ctx) };
+  };
+
+  const handleOrcamentoExport = async () => {
+    const r = await orcamentoPdf();
+    if (r) r.pdf.save(r.nome);
+  };
+
+  const handleOrcamentoPrint = async () => {
+    const r = await orcamentoPdf();
+    if (!r) return;
+    const url = URL.createObjectURL(r.pdf.output('blob'));
+    const w = window.open(url);
+    if (w) w.onload = () => { w.print(); URL.revokeObjectURL(url); };
+  };
 
   const handleExportPdf = async () => {
     if (!lastRecibo) return;
@@ -298,11 +343,13 @@ const EmissaoReciboPage = () => {
     <div className="space-y-2 h-full flex flex-col">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-foreground">Emissão de Recibo</h1>
+          <h1 className="text-lg font-bold text-foreground">{orcamento ? 'Orçamento' : 'Emissão de Recibo'}</h1>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-primary">
-              Nº {saved && lastRecibo ? lastRecibo.number : nextNumber}
-            </span>
+            {!orcamento && (
+              <span className="text-sm font-semibold text-primary">
+                Nº {saved && lastRecibo ? lastRecibo.number : nextNumber}
+              </span>
+            )}
             <span className="text-sm text-muted-foreground">
               {formatDate(new Date().toISOString().slice(0, 10))}
             </span>
@@ -418,6 +465,7 @@ const EmissaoReciboPage = () => {
               Total: {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </p>
           </div>
+          {!orcamento && (<>
           <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
             <Checkbox checked={isPago} onCheckedChange={(v) => { setIsPago(!!v); if (!v) setFormaPagamento(''); }} disabled={saved} />
             Pago
@@ -432,6 +480,7 @@ const EmissaoReciboPage = () => {
               </SelectContent>
             </Select>
           )}
+          </>)}
           <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
             <Checkbox checked={hasDiscount} onCheckedChange={(v) => setHasDiscount(!!v)} disabled={saved} />
             Desconto
@@ -461,10 +510,16 @@ const EmissaoReciboPage = () => {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
+          {orcamento ? (<>
+          <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={handleOrcamentoExport}>Exportar PDF</Button>
+          <Button size="sm" variant="secondary" className="min-h-[44px] sm:min-h-0" onClick={handleOrcamentoPrint}>Imprimir</Button>
+          <Button size="sm" variant="outline" className="min-h-[44px] sm:min-h-0" onClick={handleNew}>Novo Orçamento</Button>
+          </>) : (<>
           <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={handleSave} disabled={saved}>Salvar Recibo</Button>
           <Button size="sm" variant="outline" className="min-h-[44px] sm:min-h-0" onClick={handleNew}>Novo Recibo</Button>
           {saved && <Button size="sm" variant="secondary" className="min-h-[44px] sm:min-h-0" onClick={handleExportPdf}>Exportar PDF</Button>}
           {saved && <Button size="sm" variant="secondary" className="min-h-[44px] sm:min-h-0" onClick={handlePrint}>Imprimir</Button>}
+          </>)}
         </div>
       </div>
     </div>

@@ -102,7 +102,8 @@ const App = () => (
 
                   {/* Recibos module */}
                   <Route path="/recibos" element={<RecibosLayout />}>
-                    <Route index element={<EmissaoReciboPage />} />
+                    <Route index element={<EmissaoReciboPage key="recibo" />} />
+                    <Route path="orcamento" element={<EmissaoReciboPage key="orcamento" modo="orcamento" />} />
                     <Route path="clientes" element={<ClientesReciboPage />} />
                     <Route path="servicos" element={<ServicosReciboPage />} />
                     <Route path="dashboard" element={<DashboardReciboPage />} />

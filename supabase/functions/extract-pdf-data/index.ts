@@ -11,11 +11,15 @@ const corsHeaders = {
 // esta chave pode usar e vai descendo a lista ate um responder. O secret
 // GEMINI_MODEL continua valendo como primeira escolha, mas deixa de ser
 // obrigatorio: sem ele, a funcao se resolve sozinha.
-const MODELO_PREFERIDO = Deno.env.get('GEMINI_MODEL') ?? '';
+const MODELO_PREFERIDO = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-flash-lite';
 // Lembra entre invocacoes qual modelo respondeu, para nao listar toda vez.
 let modeloEmUso: string | null = MODELO_PREFERIDO || null;
 
+// Flash-lite primeiro: e o que tem cota gratuita mais folgada, e para ler
+// uma NFS-e a diferenca de qualidade nao aparece. Depois flash, depois pro.
 const ORDEM: RegExp[] = [
+  /^gemini-flash-lite-latest$/,
+  /flash-lite/,
   /^gemini-flash-latest$/,
   /flash/,
   /^gemini-pro-latest$/,
@@ -23,18 +27,21 @@ const ORDEM: RegExp[] = [
 ];
 
 // Primeiro o tipo (flash antes de pro, por velocidade e cota gratuita),
-// depois estavel antes de preview/lite, depois a geracao mais nova. Um alias
-// sem numero ('gemini-flash-latest') conta como o mais novo de todos.
+// depois estavel antes de preview, depois a geracao mais nova.
+// So apelido terminado em -latest conta como 'o mais novo': um nome de
+// familia desconhecida (gemini-omni-1.1-flash) nao tem a versao onde
+// esperamos, e tratar isso como novissimo jogava modelo sem camada
+// gratuita na frente dos que funcionam.
 function nota(n: string) {
   let tier = ORDEM.length;
   for (let i = 0; i < ORDEM.length; i++) {
     if (ORDEM[i].test(n)) { tier = i; break; }
   }
-  const m = n.match(/gemini-([0-9]+(?:\.[0-9]+)?)/);
+  const m = n.match(/^gemini-([0-9]+(?:\.[0-9]+)?)-/);
   return {
     tier,
-    penal: /lite|preview|exp|thinking/.test(n) ? 1 : 0,
-    ver: m ? parseFloat(m[1]) : 99,
+    penal: /preview|exp|thinking/.test(n) ? 1 : 0,
+    ver: n.endsWith('-latest') ? 99 : (m ? parseFloat(m[1]) : 0),
   };
 }
 
@@ -125,7 +132,20 @@ async function callGemini(apiKey: string, body: unknown): Promise<Response> {
         break;
       }
 
-      return r; // 429, 403 e afins: nao adianta insistir nem trocar.
+      if (r.status === 429) {
+        // "limit: 0" nao e cota esgotada: e modelo que nao tem camada
+        // gratuita nenhuma. Recusa de plano, nao de uso -- esperar nao
+        // resolve, trocar de modelo resolve.
+        const txt = await r.clone().text();
+        if (/"?limit"?:\s*0\b/.test(txt) || /"quotaValue":\s*"0"/.test(txt)) {
+          console.log(`modelo "${modelo}" nao tem cota gratuita; tentando o proximo`);
+          if (modeloEmUso === modelo) modeloEmUso = null;
+          break;
+        }
+        return r; // cota de verdade estourada: insistir so faz esperar.
+      }
+
+      return r; // 403 e afins: nao adianta insistir nem trocar.
     }
   }
 

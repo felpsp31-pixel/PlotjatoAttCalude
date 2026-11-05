@@ -61,7 +61,7 @@ Em *Edge Functions → Secrets*:
 | Secret | Para que serve |
 | --- | --- |
 | `GEMINI_API_KEY` | Leitura de PDF por IA (NFS-e e boletos). Chave gratuita em aistudio.google.com |
-| `GEMINI_MODEL` | Opcional, e normalmente dispensável. As funções consultam a API do Google, veem quais modelos a chave pode usar e escolhem o melhor Flash disponível. Preencha só para forçar um modelo específico — se o nome sair do ar, elas voltam a escolher sozinhas |
+| `GEMINI_MODEL` | Opcional. Sem ele as funções usam `gemini-3.1-flash-lite` e, se esse nome sair do ar ou ficar sem cota, consultam a API e descem a lista de modelos que a chave realmente tem (flash-lite primeiro, que é o mais folgado na camada gratuita). Preencha só para forçar um modelo |
 | `CLEANUP_SECRET` | Protege a função que apaga demandas antigas |
 | `ALLOWED_ORIGIN` | Domínio do frontend, para o CORS |
 | `VITE_SYSTEM_PASSWORD` | Senha de acesso ao sistema (fallback inicial) |

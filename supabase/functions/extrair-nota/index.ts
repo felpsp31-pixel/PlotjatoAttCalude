@@ -81,11 +81,33 @@ serve(async (req) => {
         403: "Chave da IA invalida ou sem permissao. Verifique a GEMINI_API_KEY.",
         404: `Modelo "${GEMINI_MODEL}" nao encontrado para esta chave. Troque o secret GEMINI_MODEL.`,
       };
+      // Modelo inexistente: pergunta ao Google quais a chave pode usar, em
+      // vez de deixar a pessoa adivinhando nomes.
+      let disponiveis: string[] | undefined;
+      if (response.status === 404) {
+        try {
+          const lr = await fetch(
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+            { headers: { "x-goog-api-key": GEMINI_API_KEY } },
+          );
+          if (lr.ok) {
+            const lj = await lr.json();
+            disponiveis = (lj.models ?? [])
+              .filter((m: { supportedGenerationMethods?: string[] }) =>
+                (m.supportedGenerationMethods ?? []).includes("generateContent"))
+              .map((m: { name: string }) => m.name.replace("models/", ""));
+          }
+        } catch (e) {
+          console.error("ListModels falhou:", e);
+        }
+      }
+
       return new Response(
         JSON.stringify({
           error: mensagens[response.status] ?? "Erro ao processar o PDF com IA.",
           // detalhe do provedor, para diagnostico: nao contem a chave
           detail: `[${response.status}] ${errorText.slice(0, 500)}`,
+          ...(disponiveis ? { modelos_disponiveis: disponiveis } : {}),
         }),
         { status: response.status === 429 ? 429 : 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -38,20 +38,38 @@ const queryClient = new QueryClient({
   },
 });
 
-// Prefetch heavy routes in idle time so the first navigation feels instant.
+// Prefetch das rotas pesadas, para a primeira navegação ser instantânea.
+// Só depois que a página terminou de carregar: ligado junto com o Windows,
+// a máquina ainda está subindo serviço e a rede mal começou, e esse
+// download disputava com a tela de login. O timeout maior dá folga para o
+// navegador terminar o que importa antes.
 if (typeof window !== "undefined") {
   const idle = (cb: () => void) =>
     "requestIdleCallback" in window
-      ? (window as any).requestIdleCallback(cb, { timeout: 2000 })
-      : setTimeout(cb, 1500);
-  idle(() => {
+      ? (window as any).requestIdleCallback(cb, { timeout: 8000 })
+      : setTimeout(cb, 6000);
+
+  const comRedeLivre = (cb: () => void) => {
+    // Conexão limitada ou economia de dados: não vale gastar o plano de
+    // alguém baixando tela que talvez nem seja aberta.
+    const net = (navigator as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (net?.saveData || /2g/.test(net?.effectiveType ?? "")) return;
+    idle(cb);
+  };
+
+  const agendar = (cb: () => void) =>
+    document.readyState === "complete"
+      ? comRedeLivre(cb)
+      : window.addEventListener("load", () => comRedeLivre(cb), { once: true });
+
+  agendar(() => {
     import("@/components/recibos/RecibosLayout");
     import("./pages/recibos/EmissaoReciboPage");
     import("./pages/recibos/ClientesReciboPage");
     import("./pages/recibos/ServicosReciboPage");
     import("./pages/recibos/DemandasPage");
   });
-  idle(() => {
+  agendar(() => {
     import("@/components/FinanceiroLayout");
     import("./pages/Dashboard");
     import("./pages/recibos/DashboardReciboPage");

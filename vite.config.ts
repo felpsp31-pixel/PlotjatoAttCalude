@@ -44,10 +44,28 @@ export default defineConfig(() => ({
     target: "es2020",
     cssCodeSplit: true,
     sourcemap: false,
+    modulePreload: {
+      // O Vite pede modulepreload de tudo que o entry alcança, e isso punha
+      // o jsPDF (564 KB), o xlsx e os gráficos para baixar com prioridade
+      // alta já na tela de login — onde nenhum deles serve para nada.
+      // Estes três só entram quando alguém gera um recibo, exporta uma
+      // planilha ou abre um gráfico, então ficam fora da lista de preload.
+      // Tirar daqui não impede o carregamento: o import dinâmico busca na
+      // hora em que for preciso.
+      resolveDependencies: (_url, deps) =>
+        deps.filter((d) => !/\/(pdf|xlsx|charts)-[^/]*\.js$/.test(d)),
+    },
     rollupOptions: {
       output: {
         // Manual vendor chunks to keep initial bundle small and cache stable.
         manualChunks(id) {
+          // O helper de preload do Vite é um módulo virtual: não mora em
+          // node_modules, então escapava do filtro abaixo e o Rollup
+          // decidia sozinho onde pôr — e punha dentro do pedaço do jsPDF.
+          // Como o entry precisa do helper, toda abertura do sistema
+          // baixava 564 KB de gerador de PDF para usar uma função de 1 KB.
+          // Num pedaço próprio, sem dependências, não arrasta nada junto.
+          if (id.includes("vite/preload-helper")) return "preload";
           if (!id.includes("node_modules")) return;
           // React fica num pedaço só dele, resolvido antes de todos os outros.
           // Se cair junto com bibliotecas que o consomem (cmdk, vaul), os

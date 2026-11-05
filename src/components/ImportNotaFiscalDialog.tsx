@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDoErro } from '@/lib/edgeError';
 
 interface ExtractedNfse {
   valor_liquido: number | null;
@@ -93,8 +94,10 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
       toast.success('Dados extraídos com sucesso! Confira e confirme.');
     } catch (err: unknown) {
       console.error('Extraction error:', err);
-      const msg = err instanceof Error ? err.message : 'Erro ao extrair dados do PDF.';
-      toast.error(msg);
+      const msg = await mensagemDoErro(err, 'Erro ao extrair dados do PDF.');
+      // Erro de IA costuma ser longo (modelo, cota, lista de modelos): sem
+      // duracao estendida o usuario nao consegue ler nem copiar.
+      toast.error(msg, { duration: 15000 });
       setPdfFile(null);
     } finally {
       setLoading(false);
@@ -185,7 +188,8 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
       return null;
     } catch (err) {
       console.error('Erro ao lançar no Financeiro:', err);
-      return 'Falhou ao lançar no Financeiro — confira o console.';
+      const motivo = err instanceof Error ? err.message : String(err);
+      return `Falhou ao lançar no Financeiro: ${motivo}`;
     }
   };
 
@@ -200,7 +204,17 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
         .from('notas-fiscais')
         .upload(filePath, pdfFile, { upsert: true });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        // Bucket ausente e erro de configuracao, nao do arquivo: dizer "erro
+        // ao salvar" manda a pessoa procurar defeito na nota fiscal.
+        if (/bucket/i.test(uploadError.message)) {
+          throw new Error(
+            'O bucket "notas-fiscais" nao existe no Supabase. Crie-o em ' +
+            'Storage (leitura publica) e tente de novo.',
+          );
+        }
+        throw uploadError;
+      }
 
       const { data: urlData } = supabase.storage
         .from('notas-fiscais')
@@ -234,7 +248,8 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
       onImported?.();
     } catch (err) {
       console.error('Save error:', err);
-      toast.error('Erro ao salvar nota fiscal.');
+      const motivo = err instanceof Error ? err.message : String(err);
+      toast.error(`Erro ao salvar nota fiscal: ${motivo}`, { duration: 15000 });
     } finally {
       setSaving(false);
     }

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Upload, Loader2, FileUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { mensagemDoErro } from '@/lib/edgeError';
 import { Button } from '@/components/ui/button';
 
 export interface ExtractedData {
@@ -60,7 +61,9 @@ const PdfUploadButton = ({ onExtracted, variant = 'icon', className = '' }: PdfU
       toast.success(`Dados extraídos: ${extracted.join(' | ') || 'Nenhum dado encontrado'}`);
     } catch (err: unknown) {
       console.error('PDF extraction error:', err);
-      toast.error('Erro ao extrair dados do PDF. Tente inserir manualmente.');
+      const msg = await mensagemDoErro(
+        err, 'Erro ao extrair dados do PDF. Tente inserir manualmente.');
+      toast.error(msg, { duration: 15000 });
     } finally {
       setLoading(false);
       if (inputRef.current) inputRef.current.value = '';

@@ -18,6 +18,10 @@ import { useFinancialInvoices } from '@/hooks/useFinancialInvoices';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -66,6 +70,37 @@ const Dashboard = () => {
   useEffect(() => {
     fetchCasual();
   }, [fetchCasual]);
+
+  // Apagar cliente avulso. Os lancamentos dele apontam para o seu id, entao
+  // apagar so a entidade deixaria notas orfas, invisiveis em qualquer coluna:
+  // o dialogo diz quantas sao e elas vao junto.
+  const [avulsoParaApagar, setAvulsoParaApagar] = useState<Entity | null>(null);
+  const [apagando, setApagando] = useState(false);
+
+  const confirmarApagarAvulso = async () => {
+    if (!avulsoParaApagar) return;
+    setApagando(true);
+    try {
+      const { error: erroInv } = await supabase
+        .from('financial_invoices').delete().eq('entity_id', avulsoParaApagar.id);
+      if (erroInv) throw erroInv;
+
+      const { error: erroEnt } = await supabase
+        .from('clientes_avulsos' as never).delete().eq('id', avulsoParaApagar.id);
+      if (erroEnt) throw erroEnt;
+
+      if (selectedId === avulsoParaApagar.id) setSelectedId(null);
+      toast.success(`"${avulsoParaApagar.name}" apagado.`);
+      setAvulsoParaApagar(null);
+      await Promise.all([fetchCasual(), refetch()]);
+    } catch (err) {
+      console.error('Erro ao apagar avulso:', err);
+      const motivo = err instanceof Error ? err.message : String(err);
+      toast.error(`Não consegui apagar: ${motivo}`, { duration: 15000 });
+    } finally {
+      setApagando(false);
+    }
+  };
 
   const allEntities = useMemo<Entity[]>(() => {
     const merged = [...suppliers];
@@ -230,6 +265,7 @@ const Dashboard = () => {
               onOpenResumo={() => setResumoOpen(true)}
               activeTab={sidebarTab}
               onTabChange={setSidebarTab}
+              onDeleteCasual={setAvulsoParaApagar}
             />
           </div>
           <div
@@ -250,6 +286,7 @@ const Dashboard = () => {
               onOpenResumo={() => setResumoOpen(true)}
               activeTab={sidebarTab}
               onTabChange={setSidebarTab}
+              onDeleteCasual={setAvulsoParaApagar}
             />
           </SheetContent>
         </Sheet>
@@ -409,6 +446,37 @@ const Dashboard = () => {
           </div>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog
+        open={avulsoParaApagar !== null}
+        onOpenChange={(aberto) => { if (!aberto && !apagando) setAvulsoParaApagar(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar "{avulsoParaApagar?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const n = avulsoParaApagar
+                  ? invoices.filter((inv) => inv.entityId === avulsoParaApagar.id).length
+                  : 0;
+                return n === 0
+                  ? 'Este cliente avulso não tem lançamentos. A ação não pode ser desfeita.'
+                  : `Este cliente avulso tem ${n} lançamento${n > 1 ? 's' : ''} no Financeiro, que ${n > 1 ? 'serão apagados' : 'será apagado'} junto. A ação não pode ser desfeita.`;
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={apagando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); confirmarApagarAvulso(); }}
+              disabled={apagando}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {apagando ? 'Apagando…' : 'Apagar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

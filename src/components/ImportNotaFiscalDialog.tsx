@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDoErro } from '@/lib/edgeError';
-import { casarCliente } from '@/lib/casarCliente';
+import { casarCliente, soDigitos } from '@/lib/casarCliente';
 
 interface ExtractedNfse {
   valor_liquido: number | null;
@@ -157,19 +157,25 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
 
         const avulso = casarCliente(
           tomador, null, (avulsos ?? []) as { id: string; name: string }[]);
-        entityType = 'casual';
         if (avulso) {
+          // Ja existe como avulso de importacoes antigas: usa esse, para nao
+          // criar uma terceira copia do mesmo tomador.
+          entityType = 'casual';
           entityId = avulso.id;
           entityName = avulso.name;
         } else {
-          // Nenhum cliente bateu: registra como avulso para o lancamento ter
-          // dono. O erro deixa de ser engolido -- sem isso, uma falha de RLS
-          // virava "nao consegui vincular" e escondia a causa.
+          // Tomador novo entra em `clientes`, nao em avulsos: e um cliente de
+          // verdade, com nota fiscal emitida. Gravar o CNPJ aqui faz a
+          // proxima nota da mesma empresa casar direto, sem depender do nome.
           const { data: novo, error: erroNovo } = await supabase
-            .from('clientes_avulsos' as never)
-            .insert({ name: tomador } as never).select('id, name').single();
+            .from('clientes')
+            .insert({ name: tomador, cnpj: soDigitos(editData.cnpj_tomador) })
+            .select('id, name').single();
           if (erroNovo) throw erroNovo;
-          if (novo) entityId = (novo as { id: string }).id;
+          if (novo) {
+            entityId = novo.id;
+            entityName = novo.name;
+          }
         }
       }
 
@@ -197,7 +203,7 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
       return {
         aviso: null,
         destino: entityType === 'casual'
-          ? `${entityName} (cliente avulso)` : entityName,
+          ? `${entityName} (avulso)` : `${entityName} (Clientes)`,
       };
     } catch (err) {
       console.error('Erro ao lançar no Financeiro:', err);

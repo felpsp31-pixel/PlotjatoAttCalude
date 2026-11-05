@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, AlertCircle, BarChart3, Clock } from 'lucide-react';
+import { Settings, AlertCircle, BarChart3, Clock, Trash2 } from 'lucide-react';
 import EntityAvatar from './EntityAvatar';
 import SettingsModal from './SettingsModal';
 import type { Entity, Invoice } from '@/types/finance';
@@ -14,9 +14,11 @@ interface EntitySidebarProps {
   onOpenResumo: () => void;
   activeTab?: SidebarTab;
   onTabChange?: (tab: SidebarTab) => void;
+  /** Só na aba Avulsos: mostra a lixeira ao lado do nome. */
+  onDeleteCasual?: (entity: Entity) => void;
 }
 
-const EntitySidebar = ({ entities, invoices, selectedId, onSelect, onOpenResumo, activeTab, onTabChange }: EntitySidebarProps) => {
+const EntitySidebar = ({ entities, invoices, selectedId, onSelect, onOpenResumo, activeTab, onTabChange, onDeleteCasual }: EntitySidebarProps) => {
   const [internalTab, setInternalTab] = useState<SidebarTab>('clients');
   const tab = activeTab ?? internalTab;
   const setTab = onTabChange ?? setInternalTab;
@@ -83,17 +85,23 @@ const EntitySidebar = ({ entities, invoices, selectedId, onSelect, onOpenResumo,
           const isDueTomorrow = entity.type === 'supplier' && hasDueTomorrow(entity.id);
           const isSelected = selectedId === entity.id;
           return (
-            <button
+            // Linha e div, nao button: a lixeira e um botao e HTML nao
+            // permite botao dentro de botao.
+            <div
               key={entity.id}
-              onClick={() => onSelect(entity.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150 mb-0.5 ${
+              className={`group w-full flex items-center gap-3 pl-3 pr-2 py-2.5 rounded-lg transition-all duration-150 mb-0.5 ${
                 isSelected
                   ? 'bg-secondary text-foreground'
                   : 'text-foreground hover:bg-secondary/60'
               }`}
             >
-              <EntityAvatar name={entity.name} size="sm" />
-              <span className="text-sm font-medium truncate flex-1">{entity.name}</span>
+              <button
+                onClick={() => onSelect(entity.id)}
+                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+              >
+                <EntityAvatar name={entity.name} size="sm" />
+                <span className="text-sm font-medium truncate">{entity.name}</span>
+              </button>
               {isDueTomorrow && !isOverdue && (
                 <span className="flex items-center gap-1 text-[10px] font-semibold text-warning bg-warning/15 rounded-full px-1.5 py-0.5 shrink-0">
                   <Clock className="h-3 w-3" />
@@ -103,7 +111,21 @@ const EntitySidebar = ({ entities, invoices, selectedId, onSelect, onOpenResumo,
               {isOverdue && (
                 <AlertCircle className="h-4 w-4 text-destructive animate-pulse-alert shrink-0" />
               )}
-            </button>
+              {entity.type === 'casual' && onDeleteCasual && (
+                <button
+                  onClick={() => onDeleteCasual(entity)}
+                  aria-label={`Apagar ${entity.name}`}
+                  title="Apagar cliente avulso"
+                  // Visivel sempre no toque, onde nao existe hover; no
+                  // desktop so aparece quando o ponteiro passa pela linha.
+                  className="shrink-0 p-1.5 rounded-md text-muted-foreground transition
+                    opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100
+                    hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

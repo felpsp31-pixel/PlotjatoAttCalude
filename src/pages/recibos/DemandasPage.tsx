@@ -386,6 +386,10 @@ const DemandasPage = () => {
       if (ano && mes && dia) setPrazo(new Date(ano, mes - 1, dia));
     }
 
+    // A hora vem separada da data: o formulário guarda as duas em campos
+    // diferentes e só junta na hora de salvar.
+    if (d.hora) setPrazoHora(d.hora);
+
     if (d.responsavel) {
       const r = responsaveis.find(
         (x) => x.name.toLowerCase() === d.responsavel!.toLowerCase());
@@ -400,6 +404,7 @@ const DemandasPage = () => {
       !achado && d.cliente ? 'cliente não cadastrado' : null,
       !d.servico ? 'serviço' : null,
       !d.prazo ? 'prazo' : null,
+      d.prazo && !d.hora ? 'horário (ficou 12:00)' : null,
     ].filter(Boolean);
     toast.info(
       faltando.length

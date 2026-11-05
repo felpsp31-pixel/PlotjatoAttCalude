@@ -141,8 +141,19 @@ Regras:
 - "responsavel" idem: exatamente um nome da lista, ou null.
 - "prazo" em YYYY-MM-DD. Resolva datas relativas ("hoje", "amanhã", "sexta",
   "semana que vem") a partir da data de hoje informada. Sem prazo citado, null.
-- "prioridade": "alta" só com sinal explícito de urgência (urgente, pra já,
-  hoje ainda); "baixa" se a pessoa disser que não tem pressa; senão "media".
+- "hora" no formato HH:MM, 24 horas, só o horário do prazo:
+  - horário explícito manda: "até as 14h" -> "14:00"; "9h30" -> "09:30";
+    "meio-dia" -> "12:00"; "até as 5 da tarde" -> "17:00".
+  - período sem hora exata: "de manhã" -> "09:00"; "à tarde" -> "14:00";
+    "fim do dia"/"antes de fechar" -> "17:00"; "começo do dia" -> "08:00".
+  - nada sobre horário: null.
+- "prioridade", exatamente um destes quatro valores:
+  - "urgente": precisa hoje, ou a pessoa diz que é urgente, emergência, "pra
+    já", "pra ontem", "to precisando agora".
+  - "alta": tem pressa declarada mas com prazo — "o quanto antes", "corre
+    comigo", prazo para amanhã.
+  - "baixa": a pessoa diz que não tem pressa, "quando der", "sem correria".
+  - "media": o resto, inclusive quando não há sinal nenhum de urgência.
 - "telefone": só dígitos, com DDD, se aparecer na mensagem.
 - "descricao": o que foi pedido, em uma ou duas frases objetivas, incluindo
   quantidades, formatos e cores citados.
@@ -150,7 +161,7 @@ Regras:
   nome de quem escreveu, use esse nome.
 
 Responda SOMENTE com JSON válido, sem cercas de código e sem texto em volta:
-{"cliente":"...","telefone":"...","email":"...","servico":"...","descricao":"...","prazo":"2026-11-10","responsavel":"...","prioridade":"media"}`;
+{"cliente":"...","telefone":"...","email":"...","servico":"...","descricao":"...","prazo":"2026-11-10","hora":"14:00","responsavel":"...","prioridade":"media"}`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -249,6 +260,14 @@ serve(async (req) => {
     const prazo = texto_ou_null(parsed.prazo);
     const prioridade = texto_ou_null(parsed.prioridade)?.toLowerCase();
 
+    // Hora so passa se for HH:MM plausivel: "14:00" vale, "25:70" e "14h"
+    // nao. O formulario cai no padrao quando vier null.
+    const horaBruta = texto_ou_null(parsed.hora);
+    const mh = horaBruta?.match(/^(\d{1,2}):(\d{2})$/);
+    const hora = mh && Number(mh[1]) <= 23 && Number(mh[2]) <= 59
+      ? `${mh[1].padStart(2, "0")}:${mh[2]}`
+      : null;
+
     return new Response(
       JSON.stringify({
         cliente: texto_ou_null(parsed.cliente),
@@ -257,8 +276,11 @@ serve(async (req) => {
         servico: daLista(parsed.servico, listaServicos),
         descricao: texto_ou_null(parsed.descricao),
         prazo: prazo && /^\d{4}-\d{2}-\d{2}$/.test(prazo) ? prazo : null,
+        hora,
         responsavel: daLista(parsed.responsavel, listaResp),
-        prioridade: ["alta", "media", "baixa"].includes(prioridade ?? "")
+        // Os quatro valores do formulario. Validar contra tres rebaixava
+        // "urgente" para "media" sem ninguem perceber.
+        prioridade: ["urgente", "alta", "media", "baixa"].includes(prioridade ?? "")
           ? prioridade : "media",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

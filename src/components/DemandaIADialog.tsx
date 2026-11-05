@@ -17,6 +17,8 @@ export interface DemandaInterpretada {
   servico: string | null;
   descricao: string | null;
   prazo: string | null;
+  /** HH:MM em 24h, só quando a mensagem citou horário. */
+  hora: string | null;
   responsavel: string | null;
   prioridade: string | null;
 }

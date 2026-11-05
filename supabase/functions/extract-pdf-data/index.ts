@@ -58,10 +58,16 @@ async function listarModelos(apiKey: string): Promise<string[]> {
   });
 }
 
+// Teto de tempo para a funcao inteira: o usuario esta parado na tela
+// esperando, e o Supabase corta a invocacao se ela se arrastar.
+const PRAZO_MS = 40_000;
+
 // 404 = nome de modelo que nao existe mais: troca de modelo e repete.
-// 503 = modelo sobrecarregado, comum na camada gratuita: reenviar resolve.
-// 429 = cota estourada: insistir nao ajuda e so prende o usuario esperando.
+// 503 = 'this model is experiencing high demand'. A fila e por modelo, entao
+//       vale esperar um pouco e, se insistir, passar para o proximo modelo.
+// 429 = cota estourada: devolve na hora, insistir so prende o usuario.
 async function callGemini(apiKey: string, body: unknown): Promise<Response> {
+  const limite = Date.now() + PRAZO_MS;
   const tentados = new Set<string>();
   let candidatos: string[] | null = null;
   let ultima: Response | null = null;
@@ -77,7 +83,12 @@ async function callGemini(apiKey: string, body: unknown): Promise<Response> {
     if (!modelo) break;
     tentados.add(modelo);
 
-    for (let tentativa = 0; tentativa < 3; tentativa++) {
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      if (Date.now() > limite) {
+        console.log('prazo esgotado; desistindo');
+        return ultima ?? sobrecarregado(tentados);
+      }
+
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
         {
@@ -86,26 +97,48 @@ async function callGemini(apiKey: string, body: unknown): Promise<Response> {
           body: JSON.stringify(body),
         },
       );
+
       if (r.ok) {
         if (modelo !== modeloEmUso) console.log(`usando o modelo '${modelo}'`);
         modeloEmUso = modelo;
         return r;
       }
+
+      ultima = r;
+
       if (r.status === 404) {
         console.log(`modelo '${modelo}' indisponivel; tentando o proximo`);
-        ultima = r;
         break;
       }
-      if (r.status !== 503) return r;
-      ultima = r;
-      if (tentativa < 2) await new Promise((res) => setTimeout(res, 1500 * (tentativa + 1)));
+
+      if (r.status === 503) {
+        console.log(`modelo '${modelo}' sobrecarregado (tentativa ${tentativa + 1})`);
+        // Uma espera curta resolve picos; se nao resolver, outro modelo tem
+        // fila propria e costuma responder na hora. O jitter evita que varias
+        // invocacoes simultaneas repitam no mesmo instante.
+        if (tentativa === 0) {
+          await new Promise((res) => setTimeout(res, 700 + Math.random() * 600));
+          continue;
+        }
+        // Esgotou neste modelo: o proximo do laco externo tem fila separada.
+        if (modeloEmUso === modelo) modeloEmUso = null;
+        break;
+      }
+
+      return r; // 429, 403 e afins: nao adianta insistir nem trocar.
     }
-    // Sobrecarga nao se resolve trocando de modelo: para aqui.
-    if (ultima && ultima.status === 503) return ultima;
   }
 
-  return ultima ?? new Response(
-    JSON.stringify({ error: { message: 'Nenhum modelo de IA respondeu.' } }),
+  return ultima ?? sobrecarregado(tentados);
+}
+
+function sobrecarregado(tentados: Set<string>): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        message: `Nenhum modelo respondeu. Tentados: ${[...tentados].join(', ') || 'nenhum'}.`,
+      },
+    }),
     { status: 503 },
   );
 }
@@ -168,8 +201,19 @@ Se não conseguir identificar algum campo, use null para esse campo.` },
 
     if (!response.ok) {
       const errorText = await response.text();
+      let motivo = errorText.slice(0, 300);
+      try {
+        const j = JSON.parse(errorText);
+        if (j?.error?.message) motivo = j.error.message;
+      } catch { /* nao era JSON */ }
+      if (response.status === 503) {
+        throw new Error(
+          'A IA do Google esta sobrecarregada agora (fila da camada gratuita). ' +
+          'Nao e problema do arquivo: tente de novo em alguns minutos.',
+        );
+      }
       // detalhe do provedor, para diagnostico: nao contem a chave
-      throw new Error(`Gemini API error [${response.status}]: ${errorText.slice(0, 400)}`);
+      throw new Error(`Erro da IA [${response.status}]: ${motivo}`);
     }
 
     const data = await response.json();

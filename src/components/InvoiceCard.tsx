@@ -4,6 +4,7 @@ import type { Invoice, Attachment } from "@/types/finance";
 import PdfUploadButton from "./PdfUploadButton";
 import PdfAttachButton from "./PdfAttachButton";
 import FilePreviewModal from "./FilePreviewModal";
+import NfseCopiarDialog from "./NfseCopiarDialog";
 import { useState } from "react";
 import {
   AlertDialog,
@@ -72,6 +73,7 @@ const InvoiceCard = ({ invoice, onMarkPaid, onDelete, onUpdate }: InvoiceCardPro
       {/* Linha 3: Botões de ação */}
       <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
+          <NfseCopiarDialog invoice={invoice} />
           {hasAttachments && (
             <button
               onClick={() => setPreviewOpen(true)}

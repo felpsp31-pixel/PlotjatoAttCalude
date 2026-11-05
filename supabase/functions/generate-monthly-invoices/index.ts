@@ -21,29 +21,41 @@ Deno.serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch { /* no body */ }
 
-    const now = new Date();
-    let target: Date;
+    // O servidor roda em UTC, e Sao Paulo esta 3 horas atras. Agendada para
+    // a madrugada do dia 1, a funcao via uma data que no Brasil ainda era o
+    // ultimo dia do mes anterior -- e fechava um mes que nao tinha acabado,
+    // deixando de fora os recibos emitidos naquela ultima noite. Por isso a
+    // data de referencia sai do calendario de Sao Paulo, nao do relogio UTC.
+    const hojeBR = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    const [anoBR, mesBR] = hojeBR.split("-").map(Number);
+
+    let year: number;
+    let mes: number; // 1..12
     if (typeof body?.month === "string" && /^\d{4}-\d{2}$/.test(body.month)) {
-      const [y, m] = body.month.split("-").map(Number);
-      target = new Date(y, m - 1, 1);
+      [year, mes] = body.month.split("-").map(Number);
     } else {
-      // previous month relative to now
-      target = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      // Mes anterior ao de hoje no Brasil, virando o ano em janeiro.
+      year = mesBR === 1 ? anoBR - 1 : anoBR;
+      mes = mesBR === 1 ? 12 : mesBR - 1;
     }
 
-    const year = target.getFullYear();
-    const monthIdx = target.getMonth();
-    const monthStr = `${year}-${String(monthIdx + 1).padStart(2, "0")}`;
+    const monthIdx = mes - 1;
+    const monthStr = `${year}-${String(mes).padStart(2, "0")}`;
     const firstDay = `${monthStr}-01`;
-    const lastDayDate = new Date(year, monthIdx + 1, 0);
-    const lastDay = `${monthStr}-${String(lastDayDate.getDate()).padStart(2, "0")}`;
+    // Dia 0 do mes seguinte e o ultimo do mes; em UTC para nao escorregar.
+    const ultimo = new Date(Date.UTC(year, mes, 0)).getUTCDate();
+    const lastDay = `${monthStr}-${String(ultimo).padStart(2, "0")}`;
 
     const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
     const referenceMonth = `${monthNames[monthIdx]}/${year}`;
 
-    // Due date: 10th of the month AFTER the reference month
-    const dueMonth = new Date(year, monthIdx + 1, 10);
-    const dueDate = `${dueMonth.getFullYear()}-${String(dueMonth.getMonth() + 1).padStart(2, "0")}-10`;
+    // Vencimento no dia 10 do mes seguinte ao de referencia.
+    const anoVenc = mes === 12 ? year + 1 : year;
+    const mesVenc = mes === 12 ? 1 : mes + 1;
+    const dueDate = `${anoVenc}-${String(mesVenc).padStart(2, "0")}-10`;
 
     // 1) Aggregate receipts directly by client for the target month.
     //    Avulsos (cliente_id NULL) are excluded — they don't generate recurring invoices.

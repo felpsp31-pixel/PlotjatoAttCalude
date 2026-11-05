@@ -12,10 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, CalendarIcon, Search, Trash2, Edit, ArrowLeft, CheckCircle2, AlertTriangle, FileText, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Filter, X, PackageCheck, Phone, Sparkles } from 'lucide-react';
+import { Plus, CalendarIcon, Search, Trash2, Edit, ArrowLeft, CheckCircle2, AlertTriangle, FileText, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Filter, X, PackageCheck, Phone, Sparkles, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import DemandaIADialog, { type DemandaInterpretada } from '@/components/DemandaIADialog';
 import { casarCliente } from '@/lib/casarCliente';
+import { linkAviso } from '@/lib/avisoWhatsapp';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -500,6 +501,42 @@ const DemandasPage = () => {
     fetchAll();
   };
 
+  /**
+   * Abre o WhatsApp no contato da demanda com o aviso de que ficou pronto.
+   * Não envia nada: a mensagem entra no campo de digitação e quem manda é
+   * a pessoa, depois de ler.
+   */
+  const AvisarPronto = ({ d }: { d: Demanda }) => {
+    const telefone = d.telefone
+      || clientes.find(c => c.id === d.cliente_id)?.phone
+      || '';
+    const url = linkAviso(telefone, {
+      clienteNome: d.cliente_nome,
+      servico: d.servico,
+      obra: obrasAll.find(o => o.id === d.obra_id)?.name ?? null,
+      solicitante: solicitantesAll.find(x => x.id === d.solicitante_id)?.name ?? null,
+      empresa: 'Plotjato',
+    });
+
+    // Sem telefone utilizável o botão fica desabilitado e diz o motivo, em
+    // vez de abrir uma aba em branco ou uma conversa com o número errado.
+    if (!url) {
+      return (
+        <Button variant="ghost" size="sm" disabled
+          title="Sem telefone com DDD cadastrado para avisar">
+          <MessageCircle className="h-4 w-4 opacity-40" />
+        </Button>
+      );
+    }
+    return (
+      <Button variant="ghost" size="sm" asChild title="Avisar no WhatsApp que ficou pronto">
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          <MessageCircle className="h-4 w-4 text-green-600" />
+        </a>
+      </Button>
+    );
+  };
+
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from('demandas').delete().eq('id', id);
     if (error) { toast.error('Erro ao excluir'); return; }
@@ -818,6 +855,7 @@ const DemandasPage = () => {
                             <span className="font-medium text-foreground text-sm">{d.cliente_nome}</span>
                           </div>
                           <div className="flex gap-1">
+                            <AvisarPronto d={d} />
                             <Button variant="ghost" size="sm" onClick={() => handleMarkRetirado(d.id)} title="Marcar como retirado"><PackageCheck className="h-4 w-4 text-primary" /></Button>
                             <Button variant="ghost" size="sm" onClick={() => handleDelete(d.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                           </div>
@@ -873,6 +911,7 @@ const DemandasPage = () => {
                               <TableCell className="border-r border-border">{d.concluido_at ? format(new Date(d.concluido_at), 'dd/MM/yyyy HH:mm') : '—'}</TableCell>
                               <TableCell>
                                 <div className="flex gap-1">
+                                  <AvisarPronto d={d} />
                                   <Button variant="ghost" size="icon" onClick={() => handleMarkRetirado(d.id)} title="Marcar como retirado"><PackageCheck className="h-4 w-4 text-primary" /></Button>
                                   <Button variant="ghost" size="icon" onClick={() => handleDelete(d.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                 </div>

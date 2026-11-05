@@ -24,6 +24,8 @@ export interface ReciboPdfContext {
   obra?: Obra;
   empresaInfo: EmpresaInfo;
   isPago?: boolean;
+  /** Forma de pagamento impressa sob o carimbo PAGO: PIX, Dinheiro ou Cartão. */
+  formaPagamento?: string;
   /** Rótulo do desconto, ex.: "Desconto (10%):". Padrão: "Desconto:" */
   descontoLabel?: string;
 }
@@ -55,7 +57,7 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a5' });
 
-  const { cliente, solicitante, obra, empresaInfo, isPago } = ctx;
+  const { cliente, solicitante, obra, empresaInfo, isPago, formaPagamento } = ctx;
   const clienteName = cliente?.name || r.clienteAvulso || 'Cliente Avulso';
 
   const subtotal = r.lines.reduce((s, l) => s + l.total, 0);
@@ -195,6 +197,10 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
       doc.setFontSize(22);
       doc.setTextColor(220, 38, 38);
       doc.text('PAGO', left + innerW / 2, stampY, { align: 'center' });
+      if (formaPagamento) {
+        doc.setFontSize(8);
+        doc.text(`Forma de pagamento: ${formaPagamento}`, left + innerW / 2, Math.min(stampY + 4.5, PAGE_H - 6), { align: 'center' });
+      }
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'normal');
     } else {

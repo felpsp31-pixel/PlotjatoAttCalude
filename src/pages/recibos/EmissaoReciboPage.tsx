@@ -6,6 +6,7 @@ import Combobox from '@/components/recibos/Combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import type { LinhaRecibo } from '@/types/recibos';
@@ -18,6 +19,7 @@ const formatDate = (date: string) => {
 };
 
 const CODIGO_PERSONALIZADO = '0';
+const FORMAS_PAGAMENTO = ['PIX', 'Dinheiro', 'Cartão'] as const;
 
 const emptyLines = (): LinhaRecibo[] =>
   Array.from({ length: 10 }, () => ({ serviceCode: '', description: '', quantity: 0, unitPrice: 0, total: 0 }));
@@ -35,6 +37,7 @@ const EmissaoReciboPage = () => {
   const [saved, setSaved] = useState(false);
   const [lastRecibo, setLastRecibo] = useState<typeof recibos[0] | null>(null);
   const [isPago, setIsPago] = useState(false);
+  const [formaPagamento, setFormaPagamento] = useState('');
   const [hasDiscount, setHasDiscount] = useState(false);
   const [discountType, setDiscountType] = useState<'percent' | 'value'>('percent');
   const [discountInput, setDiscountInput] = useState<string>('');
@@ -199,6 +202,7 @@ const EmissaoReciboPage = () => {
     const validLines = lines.filter(l => l.serviceCode && l.quantity > 0);
     if (validLines.length === 0) { toast.error('Adicione ao menos um serviço.'); return; }
     const personalizadaIncompleta = validLines.find(l => l.serviceCode === CODIGO_PERSONALIZADO && (!l.description.trim() || l.unitPrice <= 0));
+    if (isPago && !formaPagamento) { toast.error('Escolha a forma de pagamento.'); return; }
     if (personalizadaIncompleta) { toast.error('No serviço personalizado (código 0), preencha a descrição e o valor.'); return; }
     const sub = validLines.reduce((s, l) => s + l.total, 0);
     const v = parseFloat(discountInput.replace(',', '.')) || 0;
@@ -225,7 +229,7 @@ const EmissaoReciboPage = () => {
 
   const handleNew = () => {
     setClienteId(''); setClienteAvulso(''); setClienteSearch(''); setSolicitanteId(''); setObraId('');
-    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(false);
+    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(false); setFormaPagamento('');
     setHasDiscount(false); setDiscountInput(''); setDiscountType('percent');
   };
 
@@ -235,6 +239,7 @@ const EmissaoReciboPage = () => {
     obra: obras.find(o => o.id === lastRecibo?.obraId),
     empresaInfo,
     isPago,
+    formaPagamento: isPago ? formaPagamento : undefined,
     descontoLabel: hasDiscount && discountType === 'percent'
       ? `Desconto (${parseFloat(discountInput.replace(',', '.')) || 0}%):`
       : 'Desconto:',
@@ -414,9 +419,19 @@ const EmissaoReciboPage = () => {
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-            <Checkbox checked={isPago} onCheckedChange={(v) => setIsPago(!!v)} disabled={saved} />
+            <Checkbox checked={isPago} onCheckedChange={(v) => { setIsPago(!!v); if (!v) setFormaPagamento(''); }} disabled={saved} />
             Pago
           </label>
+          {isPago && (
+            <Select value={formaPagamento} onValueChange={setFormaPagamento} disabled={saved}>
+              <SelectTrigger className="h-8 w-[130px] text-sm">
+                <SelectValue placeholder="Forma de pgto." />
+              </SelectTrigger>
+              <SelectContent>
+                {FORMAS_PAGAMENTO.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
           <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
             <Checkbox checked={hasDiscount} onCheckedChange={(v) => setHasDiscount(!!v)} disabled={saved} />
             Desconto

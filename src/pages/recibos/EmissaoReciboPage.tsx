@@ -17,6 +17,8 @@ const formatDate = (date: string) => {
   return `${d}/${m}/${y}`;
 };
 
+const CODIGO_PERSONALIZADO = '0';
+
 const emptyLines = (): LinhaRecibo[] =>
   Array.from({ length: 10 }, () => ({ serviceCode: '', description: '', quantity: 0, unitPrice: 0, total: 0 }));
 
@@ -166,6 +168,11 @@ const EmissaoReciboPage = () => {
           line.serviceCode = val;
           line.description = cs?.description ?? '';
           line.unitPrice = cs?.unitPrice ?? 0;
+        } else if (val === CODIGO_PERSONALIZADO) {
+          // Fora do padrao: descricao e valor digitados na propria linha.
+          line.serviceCode = val;
+          line.description = '';
+          line.unitPrice = 0;
         } else {
           const svc = servicos.find(s => s.code === val);
           line.serviceCode = val;
@@ -175,6 +182,11 @@ const EmissaoReciboPage = () => {
         line.total = line.quantity * line.unitPrice;
       } else if (field === 'quantity') {
         line.quantity = Number(value) || 0;
+        line.total = line.quantity * line.unitPrice;
+      } else if (field === 'description') {
+        line.description = String(value);
+      } else if (field === 'unitPrice') {
+        line.unitPrice = Number(String(value).replace(',', '.')) || 0;
         line.total = line.quantity * line.unitPrice;
       }
       next[idx] = line;
@@ -186,6 +198,8 @@ const EmissaoReciboPage = () => {
     if (!clienteId && !clienteAvulso.trim()) { toast.error('Selecione ou digite um cliente.'); return; }
     const validLines = lines.filter(l => l.serviceCode && l.quantity > 0);
     if (validLines.length === 0) { toast.error('Adicione ao menos um serviço.'); return; }
+    const personalizadaIncompleta = validLines.find(l => l.serviceCode === CODIGO_PERSONALIZADO && (!l.description.trim() || l.unitPrice <= 0));
+    if (personalizadaIncompleta) { toast.error('No serviço personalizado (código 0), preencha a descrição e o valor.'); return; }
     const sub = validLines.reduce((s, l) => s + l.total, 0);
     const v = parseFloat(discountInput.replace(',', '.')) || 0;
     const desc = !hasDiscount ? 0 : discountType === 'percent' ? Math.min(sub, (sub * v) / 100) : Math.min(sub, v);
@@ -245,11 +259,27 @@ const EmissaoReciboPage = () => {
   const clientSpecificServices = useMemo(() =>
     clientServices.filter(cs => cs.clienteId === clienteId), [clientServices, clienteId]);
 
+  // Cliente com tabela propria ve so os valores dele; os demais veem a tabela
+  // comum. O codigo 0 aparece sempre, para servicos fora do padrao.
   const servicoOptions = useMemo(() => {
-    const global = servicos.map(s => ({ value: s.code, label: `${s.code} - ${s.description}` }));
-    const specific = clientSpecificServices.map(cs => ({ value: `CS:${cs.code}`, label: `★ ${cs.code} - ${cs.description}` }));
-    return [...specific, ...global];
+    const personalizado = { value: CODIGO_PERSONALIZADO, label: '0 - Serviço personalizado' };
+    if (clientSpecificServices.length > 0) {
+      return [personalizado, ...clientSpecificServices.map(cs => ({ value: `CS:${cs.code}`, label: `★ ${cs.code} - ${cs.description}` }))];
+    }
+    return [personalizado, ...servicos.map(s => ({ value: s.code, label: `${s.code} - ${s.description}` }))];
   }, [servicos, clientSpecificServices]);
+
+  // Ao trocar de cliente, limpa as linhas com codigos que ele nao pode usar
+  // (ex.: valor comum escolhido antes de selecionar um cliente com tabela propria).
+  useEffect(() => {
+    if (saved) return;
+    const permitidos = new Set(servicoOptions.map(o => o.value));
+    setLines(prev => {
+      const invalida = (l: LinhaRecibo) => l.serviceCode && l.serviceCode !== 'ENTREGA' && !permitidos.has(l.serviceCode);
+      if (!prev.some(invalida)) return prev;
+      return prev.map(l => invalida(l) ? { serviceCode: '', description: '', quantity: 0, unitPrice: 0, total: 0 } : l);
+    });
+  }, [servicoOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -349,12 +379,18 @@ const EmissaoReciboPage = () => {
                 <TableCell className="py-0.5 px-2">
                   <Combobox options={servicoOptions} value={line.serviceCode} onValueChange={v => updateLine(idx, 'serviceCode', v)} placeholder="Código" disabled={saved} />
                 </TableCell>
-                <TableCell className="py-0.5 px-2 text-xs text-foreground">{line.description}</TableCell>
+                <TableCell className="py-0.5 px-2 text-xs text-foreground">
+                  {line.serviceCode === CODIGO_PERSONALIZADO ? (
+                    <Input value={line.description} onChange={e => updateLine(idx, 'description', e.target.value)} disabled={saved} placeholder="Descreva o serviço" className="h-7 text-base" />
+                  ) : line.description}
+                </TableCell>
                 <TableCell className="py-0.5 px-2">
                   <Input type="number" min={0} value={line.quantity || ''} onChange={e => updateLine(idx, 'quantity', e.target.value)} disabled={saved} className="h-7 w-16 text-base" />
                 </TableCell>
                 <TableCell className="py-0.5 px-2 text-xs text-foreground">
-                  {line.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  {line.serviceCode === CODIGO_PERSONALIZADO ? (
+                    <Input type="number" min={0} step="0.01" value={line.unitPrice || ''} onChange={e => updateLine(idx, 'unitPrice', e.target.value)} disabled={saved} placeholder="0,00" className="h-7 w-24 text-base" />
+                  ) : line.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </TableCell>
                 <TableCell className="py-0.5 px-2 text-xs font-medium text-foreground">
                   {line.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}

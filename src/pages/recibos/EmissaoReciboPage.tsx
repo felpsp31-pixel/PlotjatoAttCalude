@@ -232,7 +232,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
 
     // Update demanda with recibo value if linked
     if (demandaIdRef.current) {
-      await supabase.from('demandas').update({ valor_recibo: total } as any).eq('id', demandaIdRef.current);
+      await supabase.from('demandas').update({ valor_recibo: total }).eq('id', demandaIdRef.current);
       demandaIdRef.current = null;
     }
   };

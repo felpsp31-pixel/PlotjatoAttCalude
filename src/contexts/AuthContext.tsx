@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { clearPasswordCache } from '@/lib/passwordCache';
+import { esquecerSessaoSistema } from '@/lib/sessaoFinanceiro';
 
 const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24h (1 dia)
 const SESSION_KEY = 'app_session';
@@ -48,6 +49,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = useCallback(async () => {
     localStorage.removeItem(SESSION_KEY);
+    esquecerSessaoSistema();
     clearPasswordCache();
     setAuthenticated(false);
     try {
@@ -80,7 +82,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         try {
           const { data } = await supabase.auth.getSession();
           const user = data.session?.user;
-          valida = !!user && !user.is_anonymous && user.app_metadata?.papel === 'sistema';
+          valida = !!user && !user.is_anonymous && ['sistema', 'financeiro'].includes(user.app_metadata?.papel);
         } catch { /* ignore */ }
       }
       if (!valida) {

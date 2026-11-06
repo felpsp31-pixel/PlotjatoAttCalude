@@ -128,7 +128,7 @@ const ExportResumoButton = ({ entities, invoices }: ExportResumoButtonProps) => 
         },
       });
 
-      yPos = (doc as any).lastAutoTable.finalY + 15;
+      yPos = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 15;
       if (yPos > 250) {
         doc.addPage();
         yPos = 20;

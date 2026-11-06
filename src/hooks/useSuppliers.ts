@@ -31,7 +31,7 @@ export function useSuppliers() {
         try {
           const ls = JSON.parse(localStorage.getItem('financeiro_suppliers') || '[]');
           if (ls.length > 0) {
-            const rows = ls.map((s: any) => ({
+            const rows = ls.map((s: Entity) => ({
               name: s.name,
               document: s.document || '',
               phone: s.phone || '',

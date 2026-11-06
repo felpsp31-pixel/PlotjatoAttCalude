@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { isPasswordCached, cachePassword } from '@/lib/passwordCache';
+import { entrarFinanceiro, esquecerSessaoSistema } from '@/lib/sessaoFinanceiro';
 import ThemeToggle from '@/components/ThemeToggle';
 import ResumoDoDia from '@/components/ResumoDoDia';
 
@@ -31,20 +31,15 @@ const HomePage = () => {
 
     setLoading(true);
     try {
-      const cached = await isPasswordCached('financial_password', trimmed);
-      if (!cached) {
-        const { data, error } = await supabase.functions.invoke('validate-password', {
-          body: { password: trimmed, type: 'financial_password' },
-        });
-        if (error || !data?.valid) {
-          setError(true);
-          return;
-        }
-        await cachePassword('financial_password', trimmed);
+      // A senha do Financeiro e conferida no servidor, que devolve a sessao do
+      // usuario "financeiro" (o unico com acesso aos dados financeiros).
+      const { data, error } = await supabase.functions.invoke('validate-password', {
+        body: { password: trimmed, type: 'financial_password' },
+      });
+      if (error || !data?.valid || !data.session || !(await entrarFinanceiro(data.session))) {
+        setError(true);
+        return;
       }
-
-      const token = btoa(`financial:${Date.now()}:${Math.random().toString(36).slice(2)}`);
-      sessionStorage.setItem('financial_auth', token);
       setModalOpen(false);
       navigate('/financeiro');
     } catch {
@@ -56,7 +51,7 @@ const HomePage = () => {
 
   const handleLogout = () => {
     sessionStorage.removeItem('system_auth');
-    sessionStorage.removeItem('financial_auth');
+    esquecerSessaoSistema();
     sessionStorage.removeItem('recibos_auth');
     authSignOut();
     navigate('/login');

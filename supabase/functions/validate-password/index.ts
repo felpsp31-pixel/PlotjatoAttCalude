@@ -5,10 +5,10 @@ import bcrypt from "npm:bcryptjs@3.0.3";
 import { exigirSistema } from "../_shared/auth.ts";
 
 // Esta funcao e a unica porta de entrada do sistema:
-// - senha de acesso certa -> devolve uma sessao do usuario "sistema", que e o
-//   unico que o banco (RLS) deixa ler e gravar;
-// - senhas do Financeiro e de Relatorios -> so conferem, e exigem ja estar
-//   logado no sistema;
+// - senha de acesso certa -> devolve uma sessao do usuario "sistema";
+// - senha do Financeiro certa (ja logado) -> sessao do usuario "financeiro",
+//   o unico que o banco deixa ver lancamentos, fornecedores e notas;
+// - senha de Relatorios -> so confere (exige ja estar logado);
 // - trocar senha -> exige estar logado e informar a senha atual.
 // Erros seguidos de um mesmo IP sao bloqueados por 15 minutos.
 
@@ -117,18 +117,19 @@ Deno.serve(async (req) => {
       return json({ valid: false });
     }
 
-    if (type !== "access_password") return json({ valid: true });
+    if (type === "reports_password") return json({ valid: true });
 
-    // Senha de acesso certa: entra como o usuario do sistema e devolve a sessao.
+    // Senha de acesso -> sessao do usuario "sistema";
+    // senha do Financeiro -> sessao do usuario "financeiro".
+    const conta = type === "financial_password"
+      ? { email: Deno.env.get("FINANCEIRO_EMAIL")!, password: Deno.env.get("FINANCEIRO_SENHA")! }
+      : { email: Deno.env.get("SISTEMA_EMAIL")!, password: Deno.env.get("SISTEMA_SENHA")! };
     const publico = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
       auth: { persistSession: false },
     });
-    const { data: login, error: loginErr } = await publico.auth.signInWithPassword({
-      email: Deno.env.get("SISTEMA_EMAIL")!,
-      password: Deno.env.get("SISTEMA_SENHA")!,
-    });
+    const { data: login, error: loginErr } = await publico.auth.signInWithPassword(conta);
     if (loginErr || !login.session) {
-      console.error("login do usuario sistema falhou:", loginErr);
+      console.error("login do usuario fixo falhou:", loginErr);
       return json({ valid: false, error: "Falha ao abrir a sessão." }, 500);
     }
     return json({

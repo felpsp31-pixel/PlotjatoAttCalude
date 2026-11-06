@@ -30,12 +30,13 @@ const sortYM = (a: string, b: string) => {
   return pa.month - pb.month;
 };
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+type ItemTooltip = { dataKey?: string | number; name?: string; value?: number; color?: string };
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: ItemTooltip[]; label?: string }) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-popover border border-border rounded-lg p-3 shadow-lg text-sm">
       <p className="font-medium text-foreground mb-1">{label}</p>
-      {payload.map((p: any) => (
+      {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
           <span className="text-muted-foreground">{p.name}:</span>
@@ -107,7 +108,7 @@ const EvolucaoFinanceira = ({ entities, invoices }: Props) => {
 
   const axisStyle = { fontSize: 10, fill: 'hsl(var(--muted-foreground))' };
 
-  const renderChart = (data: any[], lines: { key: string; color: string; name: string }[]) => (
+  const renderChart = (data: Record<string, string | number>[], lines: { key: string; color: string; name: string }[]) => (
     data.length === 0 ? (
       <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
         Nenhum dado disponível.

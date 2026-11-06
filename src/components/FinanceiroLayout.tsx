@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { sairFinanceiro } from '@/lib/sessaoFinanceiro';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { ArrowLeft, LogOut, LayoutDashboard, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,8 +16,8 @@ const FinanceiroLayout = () => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const expanded = isMobile ? true : hovered;
 
-  const handleExit = () => {
-    sessionStorage.removeItem('financial_auth');
+  const handleExit = async () => {
+    await sairFinanceiro();
     navigate('/');
   };
 

@@ -1,6 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { exigirSistema } from "../_shared/auth.ts";
 
+// Linha legada de monthly_recibo_summaries.
+type Resumo = { id: string; cliente_id: string; cliente_name: string; total: number | string };
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -12,7 +15,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  const negado = await exigirSistema(req, corsHeaders, { aceitarServiceRole: true });
+  const negado = await exigirSistema(req, corsHeaders, { aceitarServiceRole: true, papel: "financeiro" });
   if (negado) return negado;
 
   try {
@@ -21,7 +24,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Allow optional override: { month: "YYYY-MM" }
-    let body: any = {};
+    let body: { month?: string } = {};
     try { body = await req.json(); } catch { /* no body */ }
 
     // O servidor roda em UTC, e Sao Paulo esta 3 horas atras. Agendada para
@@ -101,7 +104,7 @@ Deno.serve(async (req) => {
         .eq("reference_month", referenceMonth)
         .in("entity_id", clientIds);
       if (existErr) throw existErr;
-      alreadyExisting = new Set((existing ?? []).map((e: any) => e.entity_id as string));
+      alreadyExisting = new Set((existing ?? []).map((e: { entity_id: string }) => e.entity_id));
     }
 
     const invoicesToInsert = clientIds
@@ -137,9 +140,9 @@ Deno.serve(async (req) => {
     let legacyInserted = 0;
     if (summaries && summaries.length > 0) {
       const legacyRows = summaries
-        .filter((s: any) => Number(s.total) > 0 && !alreadyExisting.has(s.cliente_id))
-        .filter((s: any) => !invoicesToInsert.some((i) => i.entity_id === s.cliente_id))
-        .map((s: any) => ({
+        .filter((s: Resumo) => Number(s.total) > 0 && !alreadyExisting.has(s.cliente_id))
+        .filter((s: Resumo) => !invoicesToInsert.some((i) => i.entity_id === s.cliente_id))
+        .map((s: Resumo) => ({
           entity_id: s.cliente_id,
           entity_name: s.cliente_name,
           entity_type: "client",
@@ -155,7 +158,7 @@ Deno.serve(async (req) => {
         if (legErr) throw legErr;
         legacyInserted = legacyRows.length;
       }
-      const ids = summaries.map((s: any) => s.id);
+      const ids = summaries.map((s: Resumo) => s.id);
       await supabase.from("monthly_recibo_summaries").update({ processed: true }).in("id", ids);
     }
 

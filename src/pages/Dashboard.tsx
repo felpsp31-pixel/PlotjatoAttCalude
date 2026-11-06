@@ -56,9 +56,9 @@ const Dashboard = () => {
   const [casualClients, setCasualClients] = useState<Entity[]>([]);
 
   const fetchCasual = useCallback(async () => {
-    const { data } = await supabase.from('clientes_avulsos' as any).select('*').order('created_at', { ascending: false });
+    const { data } = await supabase.from('clientes_avulsos').select('*').order('created_at', { ascending: false });
     if (data) {
-      setCasualClients((data as any[]).map(c => ({
+      setCasualClients(data.map(c => ({
         id: c.id,
         name: c.name,
         type: 'casual' as const,
@@ -186,8 +186,8 @@ const Dashboard = () => {
       }
       await refetch();
       setGenerateOpen(false);
-    } catch (e: any) {
-      toast.error(`Falha ao gerar lançamentos: ${e?.message ?? 'erro desconhecido'}`);
+    } catch (e: unknown) {
+      toast.error(`Falha ao gerar lançamentos: ${e instanceof Error ? e.message : 'erro desconhecido'}`);
     } finally {
       setGenerating(false);
     }

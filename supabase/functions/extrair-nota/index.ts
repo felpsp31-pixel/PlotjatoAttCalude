@@ -191,7 +191,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  const negado = await exigirSistema(req, corsHeaders);
+  const negado = await exigirSistema(req, corsHeaders, { papel: "financeiro" });
   if (negado) return negado;
 
   try {

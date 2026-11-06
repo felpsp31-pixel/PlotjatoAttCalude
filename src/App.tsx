@@ -46,7 +46,7 @@ const queryClient = new QueryClient({
 if (typeof window !== "undefined") {
   const idle = (cb: () => void) =>
     "requestIdleCallback" in window
-      ? (window as any).requestIdleCallback(cb, { timeout: 8000 })
+      ? (window as Window & { requestIdleCallback: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback(cb, { timeout: 8000 })
       : setTimeout(cb, 6000);
 
   const comRedeLivre = (cb: () => void) => {

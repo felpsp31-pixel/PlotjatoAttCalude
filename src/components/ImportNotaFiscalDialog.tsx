@@ -35,13 +35,14 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
     issqn_retido: null,
     tomador: null,
     numero_nfse: null,
+    cnpj_tomador: null,
   });
   const inputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setPdfFile(null);
     setExtracted(null);
-    setEditData({ valor_liquido: null, vencimento: null, issqn_retido: null, tomador: null, numero_nfse: null });
+    setEditData({ valor_liquido: null, vencimento: null, issqn_retido: null, tomador: null, numero_nfse: null, cnpj_tomador: null });
     setLoading(false);
     setSaving(false);
   };

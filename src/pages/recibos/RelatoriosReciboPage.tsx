@@ -99,7 +99,7 @@ const RelatoriosReciboPage = () => {
         r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
       ]),
     });
-    const finalY = (doc as any).lastAutoTable?.finalY ?? 50;
+    const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 50;
     doc.setFontSize(12);
     doc.text(`Total: ${totalPeriodo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, finalY + 10);
     doc.save('relatorio_recibos.pdf');

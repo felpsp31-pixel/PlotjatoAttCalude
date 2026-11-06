@@ -2,7 +2,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Download, ExternalLink, X, Paperclip } from 'lucide-react';
 import type { Attachment } from '@/types/finance';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { urlAssinada } from '@/lib/arquivoPrivado';
 
 interface FilePreviewModalProps {
   open: boolean;
@@ -15,6 +16,18 @@ const FilePreviewModal = ({ open, onOpenChange, attachments, onRemove }: FilePre
   const [selectedIdx, setSelectedIdx] = useState(0);
   const safeIdx = Math.min(selectedIdx, Math.max(0, attachments.length - 1));
   const current = attachments[safeIdx];
+
+  // Buckets privados: troca cada link guardado por um link assinado temporario.
+  const [assinadas, setAssinadas] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!open) return;
+    let vivo = true;
+    Promise.all(attachments.map(async (a) => [a.url, await urlAssinada(a.url)] as const)).then((pares) => {
+      if (vivo) setAssinadas(Object.fromEntries(pares));
+    });
+    return () => { vivo = false; };
+  }, [open, attachments]);
+  const link = (url: string) => assinadas[url] ?? '';
 
   if (!current) return null;
 
@@ -32,13 +45,13 @@ const FilePreviewModal = ({ open, onOpenChange, attachments, onRemove }: FilePre
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button variant="outline" size="sm" asChild>
-              <a href={current.url} target="_blank" rel="noopener noreferrer">
+              <a href={link(current.url)} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4 mr-1" />
                 Abrir
               </a>
             </Button>
             <Button variant="outline" size="sm" asChild>
-              <a href={current.url} download={current.name}>
+              <a href={link(current.url)} download={current.name}>
                 <Download className="h-4 w-4 mr-1" />
                 Baixar
               </a>
@@ -59,7 +72,7 @@ const FilePreviewModal = ({ open, onOpenChange, attachments, onRemove }: FilePre
                   }`}
                 >
                   {isImg ? (
-                    <img src={att.url} alt={att.name} className="w-full h-full object-cover" />
+                    <img src={link(att.url)} alt={att.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-secondary">
                       <Paperclip className="h-5 w-5 text-muted-foreground" />
@@ -81,10 +94,10 @@ const FilePreviewModal = ({ open, onOpenChange, attachments, onRemove }: FilePre
 
         <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-secondary/30">
           {isPdf ? (
-            <iframe src={current.url} className="w-full h-[70vh] rounded-lg" title={current.name} />
+            <iframe src={link(current.url)} className="w-full h-[70vh] rounded-lg" title={current.name} />
           ) : isImage ? (
             <div className="flex items-center justify-center p-4">
-              <img src={current.url} alt={current.name} className="max-w-full max-h-[65vh] object-contain rounded" />
+              <img src={link(current.url)} alt={current.name} className="max-w-full max-h-[65vh] object-contain rounded" />
             </div>
           ) : (
             <div className="flex items-center justify-center h-64 text-muted-foreground">

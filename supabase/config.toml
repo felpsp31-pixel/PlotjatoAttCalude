@@ -1,4 +1,2 @@
 project_id = "nxtfhrsrjqpejdmtjirt"
 
-[functions.extrair-nota]
-verify_jwt = false

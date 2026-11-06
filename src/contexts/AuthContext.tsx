@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { isPasswordCached, cachePassword, clearPasswordCache } from '@/lib/passwordCache';
+import { clearPasswordCache } from '@/lib/passwordCache';
 
 const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24h (1 dia)
 const SESSION_KEY = 'app_session';
@@ -73,20 +73,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const restore = async () => {
+      // So vale a sessao do usuario do sistema (a anonima foi desligada).
       const session = getSession();
+      let valida = false;
       if (session) {
         try {
-          const { supabase } = await import('@/integrations/supabase/client');
           const { data } = await supabase.auth.getSession();
-          if (!data.session) {
-            await supabase.auth.signInAnonymously();
-          }
+          const user = data.session?.user;
+          valida = !!user && !user.is_anonymous && user.app_metadata?.papel === 'sistema';
         } catch { /* ignore */ }
       }
-      setAuthenticated(!!session);
+      if (!valida) {
+        localStorage.removeItem(SESSION_KEY);
+        try { await supabase.auth.signOut(); } catch { /* ignore */ }
+      }
+      setAuthenticated(valida);
       setLoading(false);
     };
     restore();
+    // Sessao expirada ou revogada no servidor: volta para a tela de senha.
+    const { data: sub } = supabase.auth.onAuthStateChange((evento) => {
+      if (evento === 'SIGNED_OUT') {
+        localStorage.removeItem(SESSION_KEY);
+        setAuthenticated(false);
+      }
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -102,17 +114,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const normalizedPassword = password.trim();
       if (!normalizedPassword) return false;
 
-      // Cache hit: revalida sem chamar a edge function
-      const cached = await isPasswordCached('access_password', normalizedPassword);
-      if (!cached) {
-        const { data, error } = await supabase.functions.invoke('validate-password', {
-          body: { password: normalizedPassword, type: 'access_password' },
-        });
-        if (error || !data?.valid) return false;
-        await cachePassword('access_password', normalizedPassword);
-      }
-
-      await supabase.auth.signInAnonymously();
+      // A senha e conferida no servidor, que devolve a sessao do usuario do
+      // sistema. Sem ela o banco nao libera nada.
+      const { data, error } = await supabase.functions.invoke('validate-password', {
+        body: { password: normalizedPassword, type: 'access_password' },
+      });
+      if (error || !data?.valid || !data.session) return false;
+      const { error: sessErr } = await supabase.auth.setSession(data.session);
+      if (sessErr) return false;
       setSession();
       setAuthenticated(true);
       return true;

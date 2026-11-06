@@ -5,3 +5,7 @@ project_id = "nxtfhrsrjqpejdmtjirt"
 # "financeiro" ou o header x-cron-secret do pg_cron, que nao envia JWT.
 [functions.generate-monthly-invoices]
 verify_jwt = false
+
+# Idem: o pg_cron chama com o header x-cleanup-secret, conferido na funcao.
+[functions.cleanup-demandas]
+verify_jwt = false

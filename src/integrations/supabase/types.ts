@@ -32,6 +32,39 @@ export type Database = {
         }
         Relationships: []
       }
+      backups_financeiro: {
+        Row: {
+          apagados: number
+          criado_em: string
+          faturamento: number
+          id: string
+          lancamentos: number
+          limpo_em: string | null
+          periodo_fim: string
+          periodo_inicio: string | null
+        }
+        Insert: {
+          apagados?: number
+          criado_em?: string
+          faturamento?: number
+          id?: string
+          lancamentos?: number
+          limpo_em?: string | null
+          periodo_fim: string
+          periodo_inicio?: string | null
+        }
+        Update: {
+          apagados?: number
+          criado_em?: string
+          faturamento?: number
+          id?: string
+          lancamentos?: number
+          limpo_em?: string | null
+          periodo_fim?: string
+          periodo_inicio?: string | null
+        }
+        Relationships: []
+      }
       client_services: {
         Row: {
           cliente_id: string
@@ -599,7 +632,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      e_financeiro: { Args: never; Returns: boolean }
       e_sistema: { Args: never; Returns: boolean }
+      limpar_lancamentos_do_backup: {
+        Args: { p_backup: string }
+        Returns: Json
+      }
       next_recibo_number: { Args: never; Returns: string }
     }
     Enums: {

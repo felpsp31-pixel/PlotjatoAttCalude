@@ -11,6 +11,7 @@ import KanbanBoard from '@/components/KanbanBoard';
 import StatusSummaryCards from '@/components/StatusSummaryCards';
 import ClientsTable from '@/components/ClientsTable';
 import ExportResumoButton from '@/components/ExportResumoButton';
+import BackupFinanceiroDialog from '@/components/BackupFinanceiroDialog';
 import SupplierMonthlyResume from '@/components/SupplierMonthlyResume';
 import EvolucaoFinanceira from '@/components/EvolucaoFinanceira';
 import PreviaFechamento from '@/components/PreviaFechamento';
@@ -442,6 +443,7 @@ const Dashboard = () => {
                 Prévia do mês
               </Button>
               <ExportResumoButton entities={allEntities} invoices={invoices} />
+              <BackupFinanceiroDialog onLimpo={() => { refetch(); }} />
             </div>
           </SheetHeader>
           <div className="mt-4 space-y-6">

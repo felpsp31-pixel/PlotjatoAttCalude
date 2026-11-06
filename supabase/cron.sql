@@ -35,7 +35,7 @@ select cron.schedule(
   $$
   select net.http_post(
     url     := 'https://SEU_PROJECT_REF.supabase.co/functions/v1/generate-monthly-invoices',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer SUA_SERVICE_KEY"}'::jsonb,
+    headers := '{"Content-Type":"application/json","x-cron-secret":"SEU_CRON_SECRET"}'::jsonb,
     body    := '{}'::jsonb
   );
   $$

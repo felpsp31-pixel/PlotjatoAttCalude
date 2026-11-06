@@ -1,2 +1,7 @@
 project_id = "nxtfhrsrjqpejdmtjirt"
 
+
+# A autorizacao e feita na propria funcao (_shared/auth.ts): usuario
+# "financeiro" ou o header x-cron-secret do pg_cron, que nao envia JWT.
+[functions.generate-monthly-invoices]
+verify_jwt = false

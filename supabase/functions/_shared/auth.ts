@@ -18,10 +18,17 @@ export async function exigirSistema(
       headers: { ...headers, "Content-Type": "application/json" },
     });
 
+  // O cron (pg_cron + pg_net) se identifica pelo header x-cron-secret.
+  if (opcoes.aceitarServiceRole) {
+    const segredo = Deno.env.get("CRON_SECRET") ?? "";
+    const enviado = req.headers.get("x-cron-secret") ?? "";
+    if (segredo && enviado.length === segredo.length && enviado === segredo) return null;
+  }
+
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return negar();
 
-  // O cron chama com a service_role key.
+  // Chamada direta com a service_role key (ex.: pelo painel).
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   if (opcoes.aceitarServiceRole && serviceKey && token === serviceKey) return null;
 

@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import type { LinhaRecibo } from '@/types/recibos';
 import { generateReciboPdf, buildReciboFileName } from '@/lib/reciboPdf';
+import { hojeBR } from '@/lib/dataLocal';
 
 const formatDate = (date: string) => {
   if (!date) return '—';
@@ -41,6 +42,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   const [lastRecibo, setLastRecibo] = useState<typeof recibos[0] | null>(null);
   const [isPago, setIsPago] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState('');
+  const [salvando, setSalvando] = useState(false);
   const [hasDiscount, setHasDiscount] = useState(false);
   const [discountType, setDiscountType] = useState<'percent' | 'value'>('percent');
   const [discountInput, setDiscountInput] = useState<string>('');
@@ -218,14 +220,18 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     const montado = montarDocumento();
     if (!montado) return;
     const { validLines, total } = montado;
-    const recibo = addRecibo({
-      date: new Date().toISOString().slice(0, 10),
+    setSalvando(true);
+    const recibo = await addRecibo({
+      date: hojeBR(),
+      isPago, formaPagamento: isPago ? formaPagamento : undefined,
       clienteId: clienteId || '',
       clienteAvulso: clienteId ? undefined : clienteAvulso.trim(),
       solicitanteId, obraId,
       lines: validLines,
       total,
     });
+    setSalvando(false);
+    if (!recibo) return; // o aviso de erro ja apareceu; o formulario fica como esta
     setLastRecibo(recibo);
     setSaved(true);
     toast.success(`Recibo Nº ${recibo.number} emitido com sucesso!`);
@@ -260,7 +266,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     const montado = montarDocumento();
     if (!montado) return null;
     const doc = {
-      id: 'orcamento', number: '', date: new Date().toISOString().slice(0, 10),
+      id: 'orcamento', number: '', date: hojeBR(),
       clienteId: clienteId || '', clienteAvulso: clienteId ? undefined : clienteAvulso.trim(),
       solicitanteId, obraId, lines: montado.validLines, total: montado.total,
     };
@@ -351,7 +357,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
               </span>
             )}
             <span className="text-sm text-muted-foreground">
-              {formatDate(new Date().toISOString().slice(0, 10))}
+              {formatDate(hojeBR())}
             </span>
           </div>
         </div>
@@ -515,7 +521,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
           <Button size="sm" variant="secondary" className="min-h-[44px] sm:min-h-0" onClick={handleOrcamentoPrint}>Imprimir</Button>
           <Button size="sm" variant="outline" className="min-h-[44px] sm:min-h-0" onClick={handleNew}>Novo Orçamento</Button>
           </>) : (<>
-          <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={handleSave} disabled={saved}>Salvar Recibo</Button>
+          <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={handleSave} disabled={saved || salvando}>{salvando ? 'Salvando…' : 'Salvar Recibo'}</Button>
           <Button size="sm" variant="outline" className="min-h-[44px] sm:min-h-0" onClick={handleNew}>Novo Recibo</Button>
           {saved && <Button size="sm" variant="secondary" className="min-h-[44px] sm:min-h-0" onClick={handleExportPdf}>Exportar PDF</Button>}
           {saved && <Button size="sm" variant="secondary" className="min-h-[44px] sm:min-h-0" onClick={handlePrint}>Imprimir</Button>}

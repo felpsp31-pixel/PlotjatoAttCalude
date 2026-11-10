@@ -23,6 +23,8 @@ const DashboardReciboPage = () => {
       solicitante: solicitantes.find(s => s.id === r.solicitanteId),
       obra: obras.find(o => o.id === r.obraId),
       empresaInfo,
+      isPago: r.isPago,
+      formaPagamento: r.formaPagamento,
     };
     const doc = await generateReciboPdf(r, ctx);
     doc.save(buildReciboFileName(r, ctx));

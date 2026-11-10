@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Clock, PackageCheck, Wallet, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { hojeBR, somarDias } from '@/lib/dataLocal';
 
 /**
  * O que importa hoje, numa olhada só.
@@ -62,7 +63,7 @@ const ResumoDoDia = () => {
         // Só consulta o Financeiro se ele já foi aberto nesta sessão.
         let aReceber: Resumo['aReceber'] = null;
         if (sessionStorage.getItem('financial_auth')) {
-          const hoje = agora.toISOString().slice(0, 10);
+          const hoje = hojeBR(agora);
           const { data: inv } = await supabase
             .from('financial_invoices')
             .select('value, due_date, status, entity_type')

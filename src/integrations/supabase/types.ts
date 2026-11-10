@@ -456,7 +456,9 @@ export type Database = {
           cliente_id: string | null
           created_at: string
           date: string
+          forma_pagamento: string | null
           id: string
+          is_pago: boolean
           lines: Json
           number: string
           obra_id: string | null
@@ -468,7 +470,9 @@ export type Database = {
           cliente_id?: string | null
           created_at?: string
           date?: string
+          forma_pagamento?: string | null
           id?: string
+          is_pago?: boolean
           lines?: Json
           number: string
           obra_id?: string | null
@@ -480,7 +484,9 @@ export type Database = {
           cliente_id?: string | null
           created_at?: string
           date?: string
+          forma_pagamento?: string | null
           id?: string
+          is_pago?: boolean
           lines?: Json
           number?: string
           obra_id?: string | null

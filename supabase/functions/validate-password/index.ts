@@ -59,7 +59,8 @@ Deno.serve(async (req) => {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconhecido";
 
-    // Limite de tentativas por IP.
+    // Limite de tentativas por IP. Registros com mais de um dia nao servem mais.
+    await admin.from("tentativas_senha").delete().lt("criado_em", new Date(Date.now() - 86_400_000).toISOString());
     const desde = new Date(Date.now() - JANELA_MIN * 60_000).toISOString();
     const { count } = await admin
       .from("tentativas_senha")

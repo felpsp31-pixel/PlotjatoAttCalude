@@ -7,6 +7,7 @@ import { montarBackup, type LancamentoBackup } from '@/lib/backupFinanceiro';
 import { caminhoDoArquivo } from '@/lib/arquivoPrivado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { hojeBR, somarDias } from '@/lib/dataLocal';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -70,7 +71,7 @@ const BackupFinanceiroDialog = ({ onLimpo }: Props) => {
       const { arquivos, faturamento } = montarBackup(lancamentos, { inicio, fim });
       const zip = zipSync(Object.fromEntries(Object.entries(arquivos).map(([n, t]) => [n, strToU8(t)])));
 
-      const nome = `backup-financeiro-${new Date().toISOString().slice(0, 10)}.zip`;
+      const nome = `backup-financeiro-${hojeBR()}.zip`;
       const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
       const a = document.createElement('a');
       a.href = url;

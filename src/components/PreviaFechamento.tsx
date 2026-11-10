@@ -16,7 +16,7 @@ const PreviaFechamento = () => {
         const [{ data: recibos, error: rErr }, { data: clientes, error: cErr }] = await Promise.all([
           supabase
             .from("recibos")
-            .select("cliente_id, cliente_avulso, total")
+            .select("cliente_id, cliente_avulso, total, is_pago")
             .gte("date", mes.inicio)
             .lte("date", mes.fim),
           supabase.from("clientes").select("id, name"),
@@ -42,14 +42,16 @@ const PreviaFechamento = () => {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
-        Acumulado de {mes.rotulo} até agora. No dia 1º, cada cliente abaixo vira um lançamento com
-        vencimento no dia 10.
+        Acumulado de {mes.rotulo} até agora. No dia 1º, cada cliente abaixo vira um lançamento em aberto com
+        vencimento no dia 10; o que já foi pago no ato entra direto em Recebido.
       </p>
 
       <div className="rounded-xl border bg-card p-4">
         <p className="text-xs text-muted-foreground">Total a faturar</p>
         <p className="text-2xl font-semibold">{brl(previa.totalClientes)}</p>
-        <p className="text-xs text-muted-foreground">{previa.clientes.length} cliente(s)</p>
+        <p className="text-xs text-muted-foreground">
+          {previa.clientes.length} cliente(s) · {brl(previa.totalPago)} já pago · {brl(previa.totalClientes - previa.totalPago)} em aberto
+        </p>
       </div>
 
       {previa.clientes.length === 0 ? (
@@ -60,6 +62,7 @@ const PreviaFechamento = () => {
             <tr className="border-b text-left text-xs text-muted-foreground">
               <th className="py-2 font-medium">Cliente</th>
               <th className="py-2 text-right font-medium">Recibos</th>
+              <th className="py-2 text-right font-medium">Já pago</th>
               <th className="py-2 text-right font-medium">Total</th>
             </tr>
           </thead>
@@ -68,6 +71,7 @@ const PreviaFechamento = () => {
               <tr key={c.clienteId} className="border-b last:border-0">
                 <td className="py-2">{c.nome}</td>
                 <td className="py-2 text-right tabular-nums">{c.recibos}</td>
+                <td className="py-2 text-right tabular-nums text-muted-foreground">{c.pago ? brl(c.pago) : '—'}</td>
                 <td className="py-2 text-right tabular-nums">{brl(c.total)}</td>
               </tr>
             ))}

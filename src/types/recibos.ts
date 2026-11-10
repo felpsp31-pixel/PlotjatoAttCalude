@@ -55,6 +55,9 @@ export interface Recibo {
   obraId: string;
   lines: LinhaRecibo[];
   total: number;
+  /** Pago no ato da emissao; entra no fechamento como ja recebido. */
+  isPago?: boolean;
+  formaPagamento?: string;
 }
 
 export interface EmpresaInfo {

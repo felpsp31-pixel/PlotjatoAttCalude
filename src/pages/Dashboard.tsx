@@ -30,6 +30,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { hojeBR, somarDias } from '@/lib/dataLocal';
 
 const MIN_SIDEBAR = 260;
 const MAX_SIDEBAR = 450;
@@ -196,11 +197,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (invoices.length === 0) return;
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+    const todayStr = hojeBR();
+    const tomorrowStr = somarDias(todayStr, 1);
 
     const overdueToday = invoices.filter((inv) => inv.dueDate === todayStr && inv.status !== 'paid');
     overdueToday.forEach((inv) => {

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { clearPasswordCache } from '@/lib/passwordCache';
-import { esquecerSessaoSistema } from '@/lib/sessaoFinanceiro';
+import { esquecerSessaoSistema, sairFinanceiro } from '@/lib/sessaoFinanceiro';
 
 const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24h (1 dia)
 const SESSION_KEY = 'app_session';
@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     clearPasswordCache();
     setAuthenticated(false);
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
     } catch { /* ignore */ }
   }, []);
 
@@ -83,11 +83,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const { data } = await supabase.auth.getSession();
           const user = data.session?.user;
           valida = !!user && !user.is_anonymous && ['sistema', 'financeiro'].includes(user.app_metadata?.papel);
+          // Sessao do Financeiro que sobrou de uma aba fechada: tenta voltar para
+          // a do sistema; se nao houver, pede a senha de acesso de novo.
+          if (valida && user.app_metadata?.papel === 'financeiro' && !sessionStorage.getItem('financial_auth')) {
+            valida = await sairFinanceiro();
+          }
         } catch { /* ignore */ }
       }
       if (!valida) {
         localStorage.removeItem(SESSION_KEY);
-        try { await supabase.auth.signOut(); } catch { /* ignore */ }
+        try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
       }
       setAuthenticated(valida);
       setLoading(false);

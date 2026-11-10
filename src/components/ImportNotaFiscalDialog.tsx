@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { mensagemDoErro } from '@/lib/edgeError';
 import { casarCliente, soDigitos } from '@/lib/casarCliente';
+import { hojeBR, somarDias } from '@/lib/dataLocal';
 
 interface ExtractedNfse {
   valor_liquido: number | null;
@@ -182,8 +183,8 @@ const ImportNotaFiscalDialog = ({ onImported }: ImportNotaFiscalDialogProps) => 
 
       if (!entityId) return { aviso: 'Não consegui vincular a um cliente — não foi lançada no Financeiro.', destino: null };
 
-      // A coluna do kanban sai do vencimento: vencida vira Atrasado.
-      const hoje = new Date().toISOString().slice(0, 10);
+      // O status sai do vencimento: vencida aparece como atrasada em "Em aberto".
+      const hoje = hojeBR();
       const status = vencimento < hoje ? 'overdue' : 'open';
 
       const d = new Date(vencimento + 'T00:00:00');

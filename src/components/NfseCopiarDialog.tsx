@@ -120,7 +120,8 @@ const NfseCopiarDialog = ({ invoice, onUpdate }: Props) => {
       if (intervalo) {
         const { data, error } = await supabase
           .from("recibos")
-          .select("number, date, total, lines")
+.select('number, date, total, lines')
+          .eq('is_pago', invoice.description.includes('(pagos no ato)'))
           .eq("cliente_id", invoice.entityId)
           .gte("date", intervalo.inicio)
           .lte("date", intervalo.fim);

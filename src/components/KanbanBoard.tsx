@@ -1,5 +1,6 @@
 import InvoiceCard from './InvoiceCard';
-import type { Invoice, InvoiceStatus } from '@/types/finance';
+import type { Invoice } from '@/types/finance';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface KanbanBoardProps {
   invoices: Invoice[];
@@ -8,54 +9,56 @@ interface KanbanBoardProps {
   onUpdate?: (id: string, data: Partial<Invoice>) => void;
 }
 
-const columns: { status: InvoiceStatus; label: string }[] = [
-  { status: 'open', label: 'Em Aberto' },
-  { status: 'paid', label: 'Paga' },
-  { status: 'overdue', label: 'Atrasado' },
-];
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const soma = (l: Invoice[]) => l.reduce((s, i) => s + (Number(i.value) || 0), 0);
 
-const columnHeaderColors: Record<InvoiceStatus, string> = {
-  open: 'text-primary',
-  paid: 'text-success',
-  overdue: 'text-destructive',
-};
-
-const dotColors: Record<InvoiceStatus, string> = {
-  open: 'bg-primary',
-  paid: 'bg-success',
-  overdue: 'bg-destructive',
-};
-
+// Duas abas: "Em aberto" (tudo que foi faturado e ainda nao foi pago, com os
+// atrasados primeiro) e "Recebido". Marcar como pago move de uma para a outra.
 const KanbanBoard = ({ invoices, onMarkPaid, onDelete, onUpdate }: KanbanBoardProps) => {
-  return (
-    <div className="flex gap-3 h-full overflow-x-auto pb-2 sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible sm:pb-0">
-      {columns.map((col) => {
-        const items = invoices.filter((inv) => inv.status === col.status);
-        return (
-          <div key={col.status} className="flex flex-col min-h-0 min-w-[260px] sm:min-w-0">
-            <div className="flex items-center gap-2 mb-4 px-1">
-              <div className={`h-2.5 w-2.5 rounded-full ${dotColors[col.status]}`} />
-              <h3 className={`text-sm font-semibold ${columnHeaderColors[col.status]}`}>
-                {col.label}
-              </h3>
-              <span className="ml-auto text-xs font-medium text-muted-foreground bg-secondary rounded-full px-2 py-0.5">
-                {items.length}
-              </span>
-            </div>
-            <div className="flex-1 overflow-y-auto bg-kanban-column rounded-xl p-3 space-y-3">
-              {items.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  Nenhum título
-                </p>
-              )}
-              {items.map((inv) => (
-                <InvoiceCard key={inv.id} invoice={inv} onMarkPaid={onMarkPaid} onDelete={onDelete} onUpdate={onUpdate} />
-              ))}
-            </div>
-          </div>
-        );
-      })}
+  const abertos = invoices
+    .filter((i) => i.status !== 'paid')
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const recebidos = invoices
+    .filter((i) => i.status === 'paid')
+    .sort((a, b) => b.dueDate.localeCompare(a.dueDate));
+  const atrasados = abertos.filter((i) => i.status === 'overdue').length;
+
+  const lista = (itens: Invoice[], vazio: string) => (
+    <div className="h-full overflow-y-auto bg-kanban-column rounded-xl p-3">
+      {itens.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">{vazio}</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {itens.map((inv) => (
+            <InvoiceCard key={inv.id} invoice={inv} onMarkPaid={onMarkPaid} onDelete={onDelete} onUpdate={onUpdate} />
+          ))}
+        </div>
+      )}
     </div>
+  );
+
+  return (
+    <Tabs defaultValue="aberto" className="flex flex-col h-full min-h-0">
+      <TabsList className="self-start mb-3">
+        <TabsTrigger value="aberto" className="gap-2">
+          Em aberto
+          <span className="text-xs text-muted-foreground">{abertos.length} · {brl(soma(abertos))}</span>
+          {atrasados > 0 && (
+            <span className="text-xs font-medium text-destructive">{atrasados} atrasado{atrasados > 1 ? 's' : ''}</span>
+          )}
+        </TabsTrigger>
+        <TabsTrigger value="recebido" className="gap-2">
+          Recebido
+          <span className="text-xs text-muted-foreground">{recebidos.length} · {brl(soma(recebidos))}</span>
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="aberto" className="flex-1 min-h-0 mt-0">
+        {lista(abertos, 'Nada em aberto.')}
+      </TabsContent>
+      <TabsContent value="recebido" className="flex-1 min-h-0 mt-0">
+        {lista(recebidos, 'Nenhum recebimento ainda.')}
+      </TabsContent>
+    </Tabs>
   );
 };
 

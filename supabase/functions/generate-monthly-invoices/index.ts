@@ -67,23 +67,29 @@ Deno.serve(async (req) => {
     //    Avulsos (cliente_id NULL) are excluded — they don't generate recurring invoices.
     const { data: recibos, error: recErr } = await supabase
       .from("recibos")
-      .select("cliente_id, total, date")
+      .select("cliente_id, total, date, is_pago")
       .gte("date", firstDay)
       .lte("date", lastDay)
       .not("cliente_id", "is", null);
 
     if (recErr) throw recErr;
 
-    const totalsByClient = new Map<string, number>();
+    // Recibos pagos no ato viram um lancamento ja recebido; os demais, um
+    // lancamento em aberto. Assim quem ja pagou nao aparece devendo.
+    const totalsByClient = new Map<string, number>(); // em aberto
+    const pagosByClient = new Map<string, number>();
+    const todosClientes = new Set<string>();
     for (const r of recibos ?? []) {
       const cid = r.cliente_id as string;
       if (!cid) continue;
       const v = Number(r.total) || 0;
-      totalsByClient.set(cid, (totalsByClient.get(cid) ?? 0) + v);
+      todosClientes.add(cid);
+      const alvo = r.is_pago ? pagosByClient : totalsByClient;
+      alvo.set(cid, (alvo.get(cid) ?? 0) + v);
     }
 
     // 2) Resolve client names
-    const clientIds = Array.from(totalsByClient.keys());
+    const clientIds = Array.from(todosClientes);
     const namesById = new Map<string, string>();
     if (clientIds.length > 0) {
       const { data: clientes, error: cliErr } = await supabase
@@ -107,19 +113,22 @@ Deno.serve(async (req) => {
       alreadyExisting = new Set((existing ?? []).map((e: { entity_id: string }) => e.entity_id));
     }
 
-    const invoicesToInsert = clientIds
-      .filter((cid) => !alreadyExisting.has(cid) && (totalsByClient.get(cid) ?? 0) > 0)
-      .map((cid) => ({
-        entity_id: cid,
-        entity_name: namesById.get(cid) ?? "Cliente",
-        entity_type: "client",
-        description: `Recibos - ${referenceMonth}`,
-        value: Number((totalsByClient.get(cid) ?? 0).toFixed(2)),
-        due_date: dueDate,
-        reference_month: referenceMonth,
-        status: "open",
-        attachments: [],
-      }));
+    const novos = clientIds.filter((cid) => !alreadyExisting.has(cid));
+    const linha = (cid: string, valor: number, pago: boolean) => ({
+      entity_id: cid,
+      entity_name: namesById.get(cid) ?? "Cliente",
+      entity_type: "client",
+      description: pago ? `Recibos - ${referenceMonth} (pagos no ato)` : `Recibos - ${referenceMonth}`,
+      value: Number(valor.toFixed(2)),
+      due_date: dueDate,
+      reference_month: referenceMonth,
+      status: pago ? "paid" : "open",
+      attachments: [],
+    });
+    const invoicesToInsert = [
+      ...novos.filter((cid) => (totalsByClient.get(cid) ?? 0) > 0).map((cid) => linha(cid, totalsByClient.get(cid)!, false)),
+      ...novos.filter((cid) => (pagosByClient.get(cid) ?? 0) > 0).map((cid) => linha(cid, pagosByClient.get(cid)!, true)),
+    ];
 
     let insertedCount = 0;
     if (invoicesToInsert.length > 0) {

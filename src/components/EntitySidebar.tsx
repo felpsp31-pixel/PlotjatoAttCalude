@@ -3,6 +3,7 @@ import { Settings, AlertCircle, BarChart3, Clock, Trash2 } from 'lucide-react';
 import EntityAvatar from './EntityAvatar';
 import SettingsModal from './SettingsModal';
 import type { Entity, Invoice } from '@/types/finance';
+import { hojeBR, somarDias } from '@/lib/dataLocal';
 
 export type SidebarTab = 'clients' | 'suppliers' | 'casual';
 
@@ -32,9 +33,7 @@ const EntitySidebar = ({ entities, invoices, selectedId, onSelect, onOpenResumo,
     invoices.some((inv) => inv.entityId === entityId && inv.status === 'overdue');
 
   const hasDueTomorrow = (entityId: string) => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+    const tomorrowStr = somarDias(hojeBR(), 1);
     return invoices.some(
       (inv) => inv.entityId === entityId && inv.dueDate === tomorrowStr && inv.status !== 'paid'
     );

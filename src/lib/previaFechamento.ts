@@ -5,6 +5,7 @@ export interface ReciboPrevia {
   cliente_id: string | null;
   cliente_avulso: string | null;
   total: number;
+  is_pago?: boolean | null;
 }
 
 export interface LinhaPrevia {
@@ -12,11 +13,14 @@ export interface LinhaPrevia {
   nome: string;
   recibos: number;
   total: number;
+  /** Parte do total ja paga no ato (entra no fechamento como recebida). */
+  pago: number;
 }
 
 export interface Previa {
   clientes: LinhaPrevia[];
   totalClientes: number;
+  totalPago: number;
   avulsos: { nome: string; recibos: number; total: number }[];
   totalAvulsos: number;
 }
@@ -33,9 +37,11 @@ export function calcularPrevia(recibos: ReciboPrevia[], nomes: Map<string, strin
         nome: nomes.get(r.cliente_id) ?? "Cliente",
         recibos: 0,
         total: 0,
+        pago: 0,
       };
       l.recibos += 1;
       l.total += v;
+      if (r.is_pago) l.pago += v;
       porCliente.set(r.cliente_id, l);
     } else {
       const nome = (r.cliente_avulso ?? "").trim() || "Sem nome";
@@ -51,6 +57,7 @@ export function calcularPrevia(recibos: ReciboPrevia[], nomes: Map<string, strin
   return {
     clientes,
     totalClientes: clientes.reduce((s, c) => s + c.total, 0),
+    totalPago: clientes.reduce((s, c) => s + c.pago, 0),
     avulsos,
     totalAvulsos: avulsos.reduce((s, a) => s + a.total, 0),
   };

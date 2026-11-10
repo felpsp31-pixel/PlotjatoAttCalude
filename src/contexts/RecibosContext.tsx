@@ -36,7 +36,7 @@ interface RecibosContextType {
   updateClientService: (id: string, s: Partial<ClientService>) => void;
   deleteClientService: (id: string) => void;
   recibos: Recibo[];
-  addRecibo: (r: Omit<Recibo, 'id' | 'number'>) => Recibo;
+  addRecibo: (r: Omit<Recibo, 'id' | 'number'>) => Promise<Recibo | null>;
   deleteRecibo: (id: string) => void;
   montantePorCliente: MontanteCliente[];
   loading: boolean;
@@ -132,6 +132,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
             obraId: r.obra_id || '',
             lines: (r.lines as unknown as Recibo['lines']) || [],
             total: Number(r.total),
+            isPago: r.is_pago, formaPagamento: r.forma_pagamento || undefined,
           })));
         });
 
@@ -371,65 +372,53 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     await supabase.from('client_services').delete().eq('id', id);
   }, []);
 
-  const addRecibo = useCallback((r: Omit<Recibo, 'id' | 'number'>): Recibo => {
-    // Provisional local number (replaced by server-assigned number once persisted)
-    const maxNum = recibos.reduce((max, rc) => {
-      const n = parseInt(rc.number, 10);
-      return isNaN(n) ? max : Math.max(max, n);
-    }, 0);
-    const provisionalNumber = String(maxNum + 1).padStart(4, '0');
-    const newRecibo: Recibo = { ...r, id: crypto.randomUUID(), number: provisionalNumber };
-    setRecibos(p => [...p, newRecibo]);
+  // Salva o recibo e so devolve depois que o servidor confirmou, ja com o
+  // numero definitivo. Devolve null (com aviso) se nao conseguir salvar.
+  const addRecibo = useCallback(async (r: Omit<Recibo, 'id' | 'number'>): Promise<Recibo | null> => {
+    const id = crypto.randomUUID();
 
-    // If avulso client, save to clientes_avulsos
-    if (r.clienteAvulso && !r.clienteId) {
-      supabase.from('clientes_avulsos').insert([{ name: r.clienteAvulso }]).then(({ error }) => {
-        if (error) console.error('Error saving avulso client:', error);
-      });
-    }
-
-    const persist = async () => {
-      // Try up to 2 times in case of a rare unique-number collision
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const { data: numData, error: numErr } = await supabase.rpc('next_recibo_number');
-        if (numErr || !numData) {
-          console.error('Error getting next recibo number:', numErr);
-          toast.error('Erro ao gerar número do recibo. Verifique sua conexão.');
-          setRecibos(p => p.filter(x => x.id !== newRecibo.id));
-          return;
-        }
-        const serverNumber = String(numData);
-
-        const { error } = await supabase.from('recibos').insert([{
-          id: newRecibo.id, number: serverNumber, date: newRecibo.date,
-          cliente_id: newRecibo.clienteId || null,
-          cliente_avulso: newRecibo.clienteAvulso || null,
-          solicitante_id: newRecibo.solicitanteId || null,
-          obra_id: newRecibo.obraId || null,
-          lines: JSON.parse(JSON.stringify(newRecibo.lines)),
-          total: newRecibo.total,
-        }]);
-
-        if (!error) {
-          // Replace provisional number with the server-assigned one
-          newRecibo.number = serverNumber;
-          setRecibos(p => p.map(x => x.id === newRecibo.id ? { ...x, number: serverNumber } : x));
-          return;
-        }
-
-        // 23505 = unique_violation; retry once with a fresh number
-        if (error.code === '23505' && attempt === 0) continue;
-
-        console.error('Error saving recibo:', error);
-        toast.error('Erro ao salvar recibo no servidor. Verifique sua conexão.');
-        setRecibos(p => p.filter(x => x.id !== newRecibo.id));
-        return;
+    // Tenta 2 vezes, para o caso raro de colisao de numero.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data: numData, error: numErr } = await supabase.rpc('next_recibo_number');
+      if (numErr || !numData) {
+        console.error('Error getting next recibo number:', numErr);
+        toast.error('Erro ao gerar número do recibo. Verifique sua conexão.');
+        return null;
       }
-    };
-    persist();
+      const number = String(numData);
 
-    return newRecibo;
-  }, [recibos]);
+      const { error } = await supabase.from('recibos').insert([{
+        id, number, date: r.date,
+        cliente_id: r.clienteId || null,
+        cliente_avulso: r.clienteAvulso || null,
+        solicitante_id: r.solicitanteId || null,
+        obra_id: r.obraId || null,
+        lines: JSON.parse(JSON.stringify(r.lines)),
+        total: r.total,
+        is_pago: !!r.isPago,
+        forma_pagamento: r.isPago ? r.formaPagamento ?? null : null,
+      }]);
+
+      if (!error) {
+        const salvo: Recibo = { ...r, id, number };
+        setRecibos(p => [...p, salvo]);
+        if (r.clienteAvulso && !r.clienteId) {
+          supabase.from('clientes_avulsos').insert([{ name: r.clienteAvulso }]).then(({ error: e }) => {
+            if (e) console.error('Error saving avulso client:', e);
+          });
+        }
+        return salvo;
+      }
+
+      // 23505 = numero ja usado; tenta de novo com outro.
+      if (error.code === '23505' && attempt === 0) continue;
+
+      console.error('Error saving recibo:', error);
+      toast.error('Erro ao salvar recibo no servidor. Verifique sua conexão.');
+      return null;
+    }
+    return null;
+  }, []);
 
   const deleteRecibo = useCallback(async (id: string) => {
     setRecibos(p => p.filter(x => x.id !== id));

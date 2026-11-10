@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Invoice, Attachment } from '@/types/finance';
 import { toast } from 'sonner';
+import { hojeBR, somarDias } from '@/lib/dataLocal';
 
 const isDbId = (id: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id);
@@ -34,7 +35,7 @@ export function useFinancialInvoices() {
       nfseEmitidaAt: row.nfse_emitida_at,
     }));
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = hojeBR();
     const withOverdue = dbInvoices.map(inv =>
       inv.status === 'open' && inv.dueDate < today
         ? { ...inv, status: 'overdue' as const }
@@ -69,7 +70,8 @@ export function useFinancialInvoices() {
             prev.map((inv) => inv.id === invoiceId ? { ...inv, status: previousStatus } : inv)
           );
           if (isDbId(invoiceId)) {
-            await supabase.from('financial_invoices').update({ status: previousStatus }).eq('id', invoiceId);
+            // 'overdue' e calculado na tela; no banco o lancamento volta a 'open'.
+            await supabase.from('financial_invoices').update({ status: previousStatus === 'overdue' ? 'open' : previousStatus }).eq('id', invoiceId);
           }
           toast.info('Ação desfeita.');
         },
@@ -108,7 +110,7 @@ export function useFinancialInvoices() {
   }, []);
 
   const handleAdd = useCallback(async (invoice: Invoice) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = hojeBR();
     const finalInvoice = invoice.status === 'open' && invoice.dueDate < today
       ? { ...invoice, status: 'overdue' as const }
       : invoice;

@@ -31,17 +31,23 @@ export async function entrarFinanceiro(sessaoFinanceiro: Tokens): Promise<boolea
   return true;
 }
 
-// Volta para o usuario "sistema". Se a sessao guardada nao existir mais,
-// segue com a do financeiro (que tambem acessa tudo do sistema).
-export async function sairFinanceiro(): Promise<void> {
+// Volta para o usuario "sistema" e devolve true. Se nao houver sessao do
+// sistema para voltar (aba fechada dentro do Financeiro, por exemplo) e a
+// atual for a do financeiro, encerra a sessao nesta maquina e devolve false:
+// a senha de acesso sera pedida de novo. A sessao financeira nunca sobra.
+export async function sairFinanceiro(): Promise<boolean> {
   sessionStorage.removeItem(FIN_AUTH);
   const raw = sessionStorage.getItem(CHAVE);
   sessionStorage.removeItem(CHAVE);
-  if (!raw) return;
-  try {
-    const tokens = JSON.parse(raw) as Tokens;
-    await supabase.auth.setSession(tokens);
-  } catch { /* mantem a sessao atual */ }
+  if (raw) {
+    try {
+      const { error } = await supabase.auth.setSession(JSON.parse(raw) as Tokens);
+      if (!error) return true;
+    } catch { /* cai para o encerramento abaixo */ }
+  }
+  if ((await papelAtual()) !== 'financeiro') return true;
+  await supabase.auth.signOut({ scope: 'local' });
+  return false;
 }
 
 export function esquecerSessaoSistema(): void {

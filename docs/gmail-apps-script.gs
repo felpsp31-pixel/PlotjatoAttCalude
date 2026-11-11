@@ -32,6 +32,11 @@ var BUSCA = 'in:inbox -category:promotions -category:social newer_than:2d';
 // Teto por execução, para não estourar o tempo do Apps Script.
 var MAX_MENSAGENS = 40;
 
+// PDFs anexados vão junto, para o sistema ler o boleto ou a nota fiscal.
+// No máximo 2 por e-mail e 4 MB no total, para o envio não ficar pesado.
+var MAX_PDFS = 2;
+var MAX_PDF_TOTAL = 4 * 1024 * 1024;
+
 /**
  * Momento a partir do qual os e-mails contam. Gravado na primeira execução,
  * para que o histórico da caixa não entre no sistema de uma vez.
@@ -84,9 +89,18 @@ function enviarUma(m) {
   var nome = de.replace(/<.*>/, '').replace(/"/g, '').trim() || email;
 
   var anexos = [];
+  var arquivos = [];
+  var somaPdf = 0;
   var lista = m.getAttachments({ includeInlineImages: false });
   for (var k = 0; k < lista.length && k < 20; k++) {
-    anexos.push({ nome: lista[k].getName(), tamanho: lista[k].getSize() });
+    var at = lista[k];
+    anexos.push({ nome: at.getName(), tamanho: at.getSize() });
+    var ehPdf = at.getContentType() === 'application/pdf' ||
+      at.getName().toLowerCase().indexOf('.pdf') === at.getName().length - 4;
+    if (ehPdf && arquivos.length < MAX_PDFS && somaPdf + at.getSize() <= MAX_PDF_TOTAL) {
+      arquivos.push({ nome: at.getName(), dados: Utilities.base64Encode(at.getBytes()) });
+      somaPdf += at.getSize();
+    }
   }
 
   var corpo = m.getPlainBody() || '';
@@ -100,6 +114,7 @@ function enviarUma(m) {
     corpo: corpo,
     recebido_em: m.getDate().toISOString(),
     anexos: anexos,
+    arquivos: arquivos,
     link: 'https://mail.google.com/mail/u/0/#all/' + m.getId()
   };
 

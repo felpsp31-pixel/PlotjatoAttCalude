@@ -157,11 +157,20 @@ Regras:
   valor, vencimento nem prazo.
 - "motivo": uma frase curta dizendo por que escolheu esse tipo.
 
+Os PDFs anexados ao e-mail vêm junto. Leia-os: o boleto ou a nota fiscal
+costuma trazer o valor e o vencimento que o corpo do e-mail não diz.
+
 Se for "cobranca", preencha "cobranca":
-- "fornecedor": quem está cobrando (a empresa, não a pessoa).
-- "valor": número em reais, só dígitos e ponto decimal ("1234.50"). Sem
-  valor claro, null. Se houver vários, o total a pagar.
-- "vencimento": YYYY-MM-DD. Resolva datas relativas pela data de hoje.
+- "fornecedor": quem está cobrando, a empresa. No boleto é o BENEFICIÁRIO
+  (cedente), não o banco e não o pagador. Na nota fiscal é o PRESTADOR do
+  serviço ou o emitente.
+- "valor": número em reais, só dígitos e ponto decimal ("1234.50"). No boleto
+  é o "Valor do documento" / "Valor cobrado". Sem valor claro, null. Havendo
+  vários, o total a pagar.
+- "vencimento": YYYY-MM-DD, o vencimento do boleto ou da nota.
+- "documento": CNPJ de quem cobra, só os dígitos, se aparecer.
+- "linha_digitavel": a linha numérica do boleto copiada EXATAMENTE como está,
+  só os dígitos, sem pontos nem espaços. Sem boleto, null.
 - "descricao": o que está sendo cobrado, em poucas palavras.
 
 Se for "demanda", preencha "demanda":
@@ -180,6 +189,36 @@ Responda SOMENTE com JSON válido, sem cercas de código e sem texto em volta:
 
 const texto_ou_null = (v: unknown) =>
   typeof v === "string" && v.trim() ? v.trim() : null;
+
+/**
+ * A linha digitável do boleto carrega valor e vencimento nos próprios
+ * dígitos: é leitura certa, não interpretação. Quando ela vem legível,
+ * vale mais do que o que o modelo leu do desenho da página.
+ *
+ * Linha de 47 dígitos (boleto bancário): fator de vencimento nas posições
+ * 33-36 e valor em centavos nas 37-46. O fator conta dias desde 07/10/1997
+ * e estourou em 21/02/2025 (9999), quando voltou a 1000 em 22/02 -- por isso a data
+ * que cair antes dessa virada ganha mais 9000 dias, a distancia entre as duas contagens.
+ * Boleto de concessionária (48 dígitos, começa com 8) não segue esse
+ * formato: devolvemos null e fica valendo o que o modelo leu.
+ */
+function lerBoleto(linha: string | null): { valor: number | null; vencimento: string | null } {
+  const d = (linha ?? "").replace(/\D/g, "");
+  if (d.length !== 47 || d.startsWith("8")) return { valor: null, vencimento: null };
+
+  const centavos = Number(d.slice(37, 47));
+  const valor = Number.isFinite(centavos) && centavos > 0 ? centavos / 100 : null;
+
+  const fator = Number(d.slice(33, 37));
+  let vencimento: string | null = null;
+  if (fator >= 1000) {
+    const base = Date.UTC(1997, 9, 7);
+    let dia = new Date(base + fator * 86_400_000);
+    if (dia.getTime() < Date.UTC(2025, 1, 22)) dia = new Date(dia.getTime() + 9000 * 86_400_000);
+    vencimento = dia.toISOString().slice(0, 10);
+  }
+  return { valor, vencimento };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -218,6 +257,12 @@ serve(async (req) => {
     const remetente = (texto_ou_null(body?.nome) ?? "").slice(0, 200);
     const remetenteEmail = (texto_ou_null(body?.de) ?? "").toLowerCase().slice(0, 200);
     const anexos = Array.isArray(body?.anexos) ? body.anexos.slice(0, 20) : [];
+    // PDFs que o script mandou em base64: vao para a IA junto com o texto e,
+    // se for cobranca, ficam guardados para o lancamento ja nascer com o anexo.
+    const arquivos: { nome: string; dados: string }[] = (Array.isArray(body?.arquivos) ? body.arquivos : [])
+      .filter((a: { nome?: string; dados?: string }) => a?.dados && typeof a.dados === "string")
+      .slice(0, 2)
+      .map((a: { nome?: string; dados: string }) => ({ nome: a.nome ?? "anexo.pdf", dados: a.dados }));
     const recebidoEm = texto_ou_null(body?.recebido_em) ?? new Date().toISOString();
 
     const [{ data: servicos }, { data: clientes }, { data: fornecedores }] = await Promise.all([
@@ -246,8 +291,13 @@ serve(async (req) => {
       corpo,
     ].join("\n");
 
+    const partes: unknown[] = [{ text: `${INSTRUCAO}\n\n${contexto}` }];
+    for (const a of arquivos) {
+      partes.push({ inline_data: { mime_type: "application/pdf", data: a.dados } });
+    }
+
     const response = await callGemini(GEMINI_API_KEY, {
-      contents: [{ parts: [{ text: `${INSTRUCAO}\n\n${contexto}` }] }],
+      contents: [{ parts: partes }],
       generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
     });
 
@@ -304,13 +354,35 @@ serve(async (req) => {
       const c = (parsed.cobranca ?? {}) as Record<string, unknown>;
       const nome = texto_ou_null(c.fornecedor) ?? remetente;
       const achado = achar(fornecedores as never, nome);
-      const valor = Number(String(c.valor ?? "").replace(/[^\d.]/g, ""));
+      const lido = Number(String(c.valor ?? "").replace(/[^\d.]/g, ""));
+      const boleto = lerBoleto(texto_ou_null(c.linha_digitavel));
+
+      // Guarda os PDFs: o lancamento aprovado ja sai com o boleto anexado.
+      const anexosUrl: { url: string; name: string; date: string }[] = [];
+      for (const a of arquivos) {
+        const limpo = a.nome.replace(/[^\w.\-]+/g, "_").slice(-80);
+        const caminho = `email/${gmailId}/${Date.now()}-${limpo}`;
+        const bytes = Uint8Array.from(atob(a.dados), (ch) => ch.charCodeAt(0));
+        const { error: upErr } = await admin.storage
+          .from("invoice-attachments")
+          .upload(caminho, bytes, { contentType: "application/pdf", upsert: false });
+        if (upErr) { console.error("upload falhou:", upErr); continue; }
+        anexosUrl.push({
+          url: `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/invoice-attachments/${caminho}`,
+          name: a.nome,
+          date: new Date().toISOString(),
+        });
+      }
+
       dados = {
         fornecedor: nome,
         fornecedor_id: achado?.id ?? null,
-        valor: Number.isFinite(valor) && valor > 0 ? valor : null,
-        vencimento: data_iso(c.vencimento),
+        documento: texto_ou_null(c.documento)?.replace(/\D/g, "") || null,
+        valor: boleto.valor ?? (Number.isFinite(lido) && lido > 0 ? lido : null),
+        vencimento: boleto.vencimento ?? data_iso(c.vencimento),
         descricao: texto_ou_null(c.descricao) ?? assunto,
+        do_boleto: !!(boleto.valor || boleto.vencimento),
+        anexos_url: anexosUrl,
       };
     } else if (tipo === "demanda") {
       const d = (parsed.demanda ?? {}) as Record<string, unknown>;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { writeFileSync } from 'node:fs';
-import { descricaoComPrazo, generateReciboPdf, textoPrazo } from './reciboPdf';
+import { descricaoComPrazo, generateReciboPdf, linhasCliente, rotuloDocumento, textoPrazo } from './reciboPdf';
 import type { Recibo } from '@/types/recibos';
 
 const empresaInfo = { name: 'Plotjato', cnpj: '00.000.000/0001-00', address: 'Rua Teste, 1', phone: '(31) 0000-0000', email: 'a@b.c', logo: '' };
@@ -31,12 +31,18 @@ describe('prazo do item', () => {
 
 describe('generateReciboPdf', () => {
   it('orçamento sai em uma via, A5 retrato, com o prazo abaixo do item', async () => {
-    const pdf = await generateReciboPdf(doc(linhas), { empresaInfo, tipo: 'orcamento' });
+    const pdf = await generateReciboPdf(doc(linhas), {
+      empresaInfo, tipo: 'orcamento',
+      cliente: { id: 'c', name: 'Construtora Teste', cnpj: '12.345.678/0001-90', phone: '(31) 99999-0000', email: 'obra@construtora.com' },
+      solicitante: { id: 's', clienteId: 'c', name: 'João', phone: '(31) 98888-1111' },
+      obra: { name: 'Edifício Central' },
+    });
     expect(pdf.internal.pageSize.getWidth()).toBeCloseTo(148, 0);
     expect(pdf.internal.pageSize.getHeight()).toBeCloseTo(210, 0);
     const texto = pdf.output();
     expect(texto.match(/Prazo: 2 dias/g)).toHaveLength(1); // uma via só
     expect(texto).not.toContain('RECIBO N');
+    expect(texto).toContain('obra@construtora.com');
     if (process.env.SALVAR_PDF_TESTE) writeFileSync(`${process.env.SALVAR_PDF_TESTE}/orcamento.pdf`, Buffer.from(pdf.output('arraybuffer')));
   });
 
@@ -46,5 +52,34 @@ describe('generateReciboPdf', () => {
     expect(pdf.internal.pageSize.getHeight()).toBeCloseTo(148, 0);
     expect(pdf.output().match(/RECIBO N/g)).toHaveLength(2);
     if (process.env.SALVAR_PDF_TESTE) writeFileSync(`${process.env.SALVAR_PDF_TESTE}/recibo.pdf`, Buffer.from(pdf.output('arraybuffer')));
+  });
+});
+
+describe('dados do cliente', () => {
+  const cliente = { cnpj: '12.345.678/0001-90', phone: '(31) 99999-0000', email: 'obra@cliente.com' };
+
+  it('orçamento mostra tudo o que foi preenchido', () => {
+    expect(linhasCliente({ cliente, solicitante: { name: 'João', phone: '(31) 98888-1111' }, obra: { name: 'Ed. Central' }, orcamento: true })).toEqual([
+      'CNPJ: 12.345.678/0001-90',
+      'Telefone: (31) 99999-0000   E-mail: obra@cliente.com',
+      'Solicitante: João · (31) 98888-1111',
+      'Obra: Ed. Central',
+    ]);
+  });
+
+  it('campo vazio não aparece', () => {
+    expect(linhasCliente({ cliente: { cnpj: '', phone: '(31) 3333-4444', email: '  ' }, solicitante: { name: 'Ana', phone: '' }, orcamento: true }))
+      .toEqual(['Telefone: (31) 3333-4444', 'Solicitante: Ana']);
+    expect(linhasCliente({ orcamento: true })).toEqual([]);
+  });
+
+  it('recibo mantém o resumo, sem telefone e e-mail', () => {
+    expect(linhasCliente({ cliente, solicitante: { name: 'João', phone: '(31) 98888-1111' }, orcamento: false }))
+      .toEqual(['CNPJ: 12.345.678/0001-90', 'Solicitante: João']);
+  });
+
+  it('CPF com 11 dígitos sai como CPF', () => {
+    expect(rotuloDocumento('123.456.789-01')).toBe('CPF');
+    expect(rotuloDocumento('12.345.678/0001-90')).toBe('CNPJ');
   });
 });

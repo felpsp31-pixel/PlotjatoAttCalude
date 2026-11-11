@@ -59,6 +59,36 @@ export const buildReciboFileName = (
   return `${safe}.pdf`;
 };
 
+/** "CPF" quando o documento tem 11 dígitos; "CNPJ" nos outros casos. */
+export const rotuloDocumento = (doc: string) => (doc.replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ');
+
+/**
+ * Linhas de dados do cliente abaixo do nome. O orçamento mostra tudo o que foi
+ * preenchido (documento, telefone, e-mail, solicitante com telefone, obra); o
+ * recibo mantém o resumo de sempre. Campo vazio não gera linha.
+ */
+export const linhasCliente = ({ cliente, solicitante, obra, orcamento }: {
+  cliente?: Pick<Cliente, 'cnpj' | 'phone' | 'email'>;
+  solicitante?: Pick<Solicitante, 'name' | 'phone'>;
+  obra?: Pick<Obra, 'name'>;
+  orcamento: boolean;
+}): string[] => {
+  const v = (s?: string) => (s ?? '').trim();
+  const info: string[] = [];
+  const documento = v(cliente?.cnpj);
+  if (documento) info.push(`${rotuloDocumento(documento)}: ${documento}`);
+  if (orcamento) {
+    const contato = [v(cliente?.phone) && `Telefone: ${v(cliente?.phone)}`, v(cliente?.email) && `E-mail: ${v(cliente?.email)}`].filter(Boolean);
+    if (contato.length) info.push(contato.join('   '));
+  }
+  if (v(solicitante?.name)) {
+    const tel = orcamento ? v(solicitante?.phone) : '';
+    info.push(`Solicitante: ${v(solicitante?.name)}${tel ? ` · ${tel}` : ''}`);
+  }
+  if (v(obra?.name)) info.push(`Obra: ${v(obra?.name)}`);
+  return info;
+};
+
 export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -162,10 +192,7 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
     y += 4 * k;
 
     fs(TAM_INFO);
-    const info: string[] = [];
-    if (cliente?.cnpj) info.push(`CNPJ: ${cliente.cnpj}`);
-    if (solicitante) info.push(`Solicitante: ${solicitante.name}`);
-    if (obra) info.push(`Obra: ${obra.name}`);
+    const info = linhasCliente({ cliente, solicitante, obra, orcamento });
     info.forEach(txt => {
       doc.splitTextToSize(txt, innerW).forEach((t: string) => { doc.text(t, left, y); y += 3 * k; });
     });

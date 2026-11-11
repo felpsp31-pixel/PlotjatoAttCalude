@@ -12,7 +12,7 @@
  *  3. Em SEGREDO, cole o segredo que o Claude te enviou.
  *  4. Salve, escolha a função "enviarEmails" e clique em Executar.
  *     O Google vai pedir autorização: aceite (é a sua própria conta).
- *  5. Rode "instalarGatilho" uma vez: a partir daí roda sozinho a cada 10 min.
+ *  5. Rode "instalarGatilho" uma vez: a partir daí roda sozinho a cada 5 min.
  *
  * Para parar: rode "removerGatilho", ou apague o projeto.
  */
@@ -99,8 +99,8 @@ function enviarUma(m) {
 
 function instalarGatilho() {
   removerGatilho();
-  ScriptApp.newTrigger('enviarEmails').timeBased().everyMinutes(10).create();
-  Logger.log('Pronto: roda a cada 10 minutos.');
+  ScriptApp.newTrigger('enviarEmails').timeBased().everyMinutes(5).create();
+  Logger.log('Pronto: roda a cada 5 minutos.');
 }
 
 function removerGatilho() {

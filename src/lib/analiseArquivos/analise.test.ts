@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { chaveArquivo, deListaDeArquivos, separarPorTipo, tipoDoArquivo, type ArquivoEntrada } from './arquivos';
 import { classificarFolha } from './regras';
 import { resumir, type ArquivoAnalisado } from './resumo';
-import { fracaoTinta } from './tinta';
+import { escalaDesenho, fracaoTinta } from './tinta';
 
 const arq = (caminho: string): ArquivoEntrada => ({ file: new File(['x'], caminho.split('/').pop()!), caminho });
 
@@ -42,6 +42,12 @@ describe('tinta', () => {
       230, 230, 230, 255, // no limite, não conta
     ]);
     expect(fracaoTinta(px)).toBe(0.5);
+  });
+
+  it('desenha em 72 DPI e só reduz páginas gigantes', () => {
+    expect(escalaDesenho(2384, 3370)).toBe(1); // A0
+    const s = escalaDesenho(20000, 3000); // faixa de 7 m
+    expect(20000 * s * 3000 * s).toBeCloseTo(40_000_000, -3);
   });
 });
 

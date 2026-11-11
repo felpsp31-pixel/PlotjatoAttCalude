@@ -1,10 +1,18 @@
 import type { Cliente, Solicitante, Obra, Recibo, EmpresaInfo } from '@/types/recibos';
 
-// A5 horizontal (210 x 148 mm) com duas vias idênticas lado a lado (105 mm cada)
-const PAGE_W = 210;
-const PAGE_H = 148;
-const HALF = PAGE_W / 2;
+// Recibo: A5 horizontal (210 x 148 mm) com duas vias idênticas lado a lado (105 mm cada).
+// Orçamento: uma via só, em A5 retrato (148 x 210 mm). A via do recibo é meia A5
+// deitada (105 x 148); a do orçamento é a mesma via ampliada para a largura da folha
+// (148 / 105), então fontes, espaços e colunas crescem juntos e o desenho fica igual.
+const VIA_W = 105;
 const PAD = 5;
+
+/** "Prazo: 1 dia útil" / "Prazo: 5 dias úteis". */
+export const textoPrazo = (dias: number) => `Prazo: ${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'}`;
+
+/** Descrição do item no PDF, com o prazo numa linha abaixo quando houver. */
+export const descricaoComPrazo = (l: { description: string; prazoDiasUteis?: number }) =>
+  l.prazoDiasUteis && l.prazoDiasUteis > 0 ? `${l.description}\n${textoPrazo(l.prazoDiasUteis)}` : l.description;
 
 const formatDate = (date: string) => {
   if (!date) return '—';
@@ -57,10 +65,12 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
     import('jspdf-autotable'),
   ]);
 
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a5' });
-
   const { cliente, solicitante, obra, empresaInfo, isPago, formaPagamento, tipo } = ctx;
   const orcamento = tipo === 'orcamento';
+
+  const doc = new jsPDF({ orientation: orcamento ? 'portrait' : 'landscape', unit: 'mm', format: 'a5' });
+  const PAGE_W = doc.internal.pageSize.getWidth();
+  const PAGE_H = doc.internal.pageSize.getHeight();
   const clienteName = cliente?.name || r.clienteAvulso || 'Cliente Avulso';
 
   const subtotal = r.lines.reduce((s, l) => s + l.total, 0);
@@ -81,7 +91,7 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
         img.onload = () => resolve();
         img.onerror = () => reject(new Error('logo load failed'));
       });
-      const maxW = 24, maxH = 13;
+      const maxW = 24, maxH = 13; // tamanho na via do recibo; o orçamento amplia na hora de desenhar
       const ratio = Math.min(maxW / img.width, maxH / img.height);
       logo = { data: empresaInfo.logo, fmt, w: img.width * ratio, h: img.height * ratio };
     } catch (e) {
@@ -89,75 +99,77 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
     }
   }
 
-  // Desenha uma via completa a partir da borda esquerda x0
-  const drawCopy = (x0: number) => {
-    const left = x0 + PAD;
-    const right = x0 + HALF - PAD;
-    const innerW = HALF - 2 * PAD;
-    let y = 9;
+  // Desenha uma via completa a partir da borda esquerda x0; k amplia tudo (1 no recibo).
+  const drawCopy = (x0: number, k: number) => {
+    const left = x0 + PAD * k;
+    const right = x0 + VIA_W * k - PAD * k;
+    const innerW = right - left;
+    const fs = (pt: number) => doc.setFontSize(pt * k);
+    let y = 9 * k;
+    const logoW = (logo?.w ?? 0) * k, logoH = (logo?.h ?? 0) * k;
 
     let headerW = innerW;
     if (logo) {
-      doc.addImage(logo.data, logo.fmt, right - logo.w, 6, logo.w, logo.h);
-      headerW = innerW - logo.w - 2;
+      doc.addImage(logo.data, logo.fmt, right - logoW, 6 * k, logoW, logoH);
+      headerW = innerW - logoW - 2 * k;
     }
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    fs(9);
     doc.text(doc.splitTextToSize(empresaInfo.name, headerW)[0] ?? '', left, y);
-    y += 3.6;
+    y += 3.6 * k;
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(5.8);
-    if (empresaInfo.cnpj) { doc.text(`CNPJ: ${empresaInfo.cnpj}`, left, y); y += 2.8; }
+    fs(5.8);
+    if (empresaInfo.cnpj) { doc.text(`CNPJ: ${empresaInfo.cnpj}`, left, y); y += 2.8 * k; }
     if (empresaInfo.address) {
       doc.splitTextToSize(empresaInfo.address, headerW).slice(0, 2).forEach((t: string) => {
-        doc.text(t, left, y); y += 2.8;
+        doc.text(t, left, y); y += 2.8 * k;
       });
     }
     const contact = [empresaInfo.phone, empresaInfo.email].filter(Boolean).join(' | ');
     if (contact) {
       doc.text(doc.splitTextToSize(contact, headerW)[0], left, y);
-      y += 2.8;
+      y += 2.8 * k;
     }
 
-    y = Math.max(y, 6 + (logo?.h ?? 0) + 2.5);
+    y = Math.max(y, 6 * k + logoH + 2.5 * k);
     doc.setDrawColor(170);
     doc.setLineWidth(0.2);
     doc.line(left, y, right, y);
-    y += 5;
+    y += 5 * k;
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    fs(10);
     doc.text(orcamento ? 'ORÇAMENTO' : `RECIBO Nº ${r.number}`, left, y);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
+    fs(6.5);
     doc.text(formatDate(r.date), right, y, { align: 'right' });
-    y += 4.6;
+    y += 4.6 * k;
 
     // O nome do cliente sai 50% maior que o resto: e o que se procura
     // primeiro no recibo, de longe.
     const TAM_INFO = 6.5;
     const TAM_CLIENTE = TAM_INFO * 1.5;
     const rotulo = 'Cliente: ';
-    doc.setFontSize(TAM_INFO);
+    fs(TAM_INFO);
     doc.text(rotulo, left, y);
     const xNome = left + doc.getTextWidth(rotulo);
-    doc.setFontSize(TAM_CLIENTE);
+    fs(TAM_CLIENTE);
     const linhasNome: string[] = doc.splitTextToSize(clienteName, innerW - (xNome - left));
     doc.text(linhasNome[0] ?? '', xNome, y);
-    linhasNome.slice(1).forEach((t: string) => { y += 4; doc.text(t, left, y); });
-    y += 4;
+    linhasNome.slice(1).forEach((t: string) => { y += 4 * k; doc.text(t, left, y); });
+    y += 4 * k;
 
-    doc.setFontSize(TAM_INFO);
+    fs(TAM_INFO);
     const info: string[] = [];
     if (cliente?.cnpj) info.push(`CNPJ: ${cliente.cnpj}`);
     if (solicitante) info.push(`Solicitante: ${solicitante.name}`);
     if (obra) info.push(`Obra: ${obra.name}`);
     info.forEach(txt => {
-      doc.splitTextToSize(txt, innerW).forEach((t: string) => { doc.text(t, left, y); y += 3; });
+      doc.splitTextToSize(txt, innerW).forEach((t: string) => { doc.text(t, left, y); y += 3 * k; });
     });
-    y += 1.5;
+    y += 1.5 * k;
 
     autoTable(doc, {
       startY: y,
@@ -166,86 +178,91 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
       head: [['Cód', 'Descrição', 'Qtd', 'Unit.', 'Total']],
       body: r.lines.map(l => [
         l.serviceCode,
-        l.description,
+        descricaoComPrazo(l),
         String(l.quantity),
         num(l.unitPrice),
         num(l.total),
       ]),
       theme: 'grid',
       styles: {
-        fontSize: 5.6,
-        cellPadding: 0.9,
+        fontSize: 5.6 * k,
+        cellPadding: 0.9 * k,
         overflow: 'linebreak',
         lineWidth: 0.1,
         lineColor: [200, 200, 200],
       },
-      headStyles: { fontSize: 5.6, fillColor: [70, 70, 70], textColor: 255, fontStyle: 'bold' },
+      headStyles: { fontSize: 5.6 * k, fillColor: [70, 70, 70], textColor: 255, fontStyle: 'bold' },
       columnStyles: {
-        0: { cellWidth: 13 },
+        0: { cellWidth: 13 * k },
         1: { cellWidth: 'auto' },
-        2: { cellWidth: 8, halign: 'right' },
-        3: { cellWidth: 15, halign: 'right' },
-        4: { cellWidth: 16, halign: 'right' },
+        2: { cellWidth: 8 * k, halign: 'right' },
+        3: { cellWidth: 15 * k, halign: 'right' },
+        4: { cellWidth: 16 * k, halign: 'right' },
       },
     });
 
-    let cy = ((doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 20) + 4;
+    let cy = ((doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 20 * k) + 4 * k;
 
-    doc.setFontSize(6.5);
+    fs(6.5);
     if (hasDesc) {
-      doc.text('Subtotal:', right - 30, cy);
+      doc.text('Subtotal:', right - 30 * k, cy);
       doc.text(num(subtotal), right, cy, { align: 'right' });
-      cy += 3.2;
-      doc.text(descLabel, right - 30, cy);
+      cy += 3.2 * k;
+      doc.text(descLabel, right - 30 * k, cy);
       doc.text(`-${num(descValue)}`, right, cy, { align: 'right' });
-      cy += 3.8;
+      cy += 3.8 * k;
     }
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.text('TOTAL:', right - 32, cy);
+    fs(9);
+    doc.text('TOTAL:', right - 32 * k, cy);
     doc.text(brl(r.total), right, cy, { align: 'right' });
     doc.setFont('helvetica', 'normal');
-    cy += 5;
+    cy += 5 * k;
 
     // Assinatura / carimbo ancorados na base da via, para a metade não ficar vazia
     if (orcamento) {
-      const notaY = Math.min(Math.max(cy + 12, PAGE_H - 16), PAGE_H - 9);
-      doc.setFontSize(6.5);
+      const notaY = Math.min(Math.max(cy + 12 * k, PAGE_H - 16 * k), PAGE_H - 9 * k);
+      fs(6.5);
       doc.setTextColor(110);
       doc.text('Orçamento sujeito a confirmação. Este documento não é recibo e não comprova pagamento.', left + innerW / 2, notaY, { align: 'center' });
       doc.setTextColor(0, 0, 0);
     } else if (isPago) {
-      const stampY = Math.min(Math.max(cy + 12, PAGE_H - 26), PAGE_H - 12);
+      const stampY = Math.min(Math.max(cy + 12 * k, PAGE_H - 26 * k), PAGE_H - 12 * k);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
+      fs(22);
       doc.setTextColor(220, 38, 38);
       doc.text('PAGO', left + innerW / 2, stampY, { align: 'center' });
       if (formaPagamento) {
-        doc.setFontSize(8);
-        doc.text(`Forma de pagamento: ${formaPagamento}`, left + innerW / 2, Math.min(stampY + 4.5, PAGE_H - 6), { align: 'center' });
+        fs(8);
+        doc.text(`Forma de pagamento: ${formaPagamento}`, left + innerW / 2, Math.min(stampY + 4.5 * k, PAGE_H - 6 * k), { align: 'center' });
       }
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'normal');
     } else {
-      const signY = Math.min(Math.max(cy + 12, PAGE_H - 20), PAGE_H - 11);
+      const signY = Math.min(Math.max(cy + 12 * k, PAGE_H - 20 * k), PAGE_H - 11 * k);
       doc.setDrawColor(120);
       doc.setLineWidth(0.2);
-      doc.line(left + 10, signY, right - 10, signY);
-      doc.setFontSize(5.5);
-      doc.text('Assinatura', left + innerW / 2, signY + 3.2, { align: 'center' });
+      doc.line(left + 10 * k, signY, right - 10 * k, signY);
+      fs(5.5);
+      doc.text('Assinatura', left + innerW / 2, signY + 3.2 * k, { align: 'center' });
     }
   };
 
-  drawCopy(0);
-  drawCopy(HALF);
+  if (orcamento) {
+    // Orçamento não precisa de via do cliente: uma via só, ocupando a folha.
+    drawCopy(0, PAGE_W / VIA_W);
+  } else {
+    drawCopy(0, 1);
+    drawCopy(VIA_W, 1);
 
-  // Linha de corte central entre as duas vias
-  doc.setDrawColor(150);
-  doc.setLineWidth(0.2);
-  doc.setLineDashPattern([1.5, 1.5], 0);
-  doc.line(HALF, 4, HALF, PAGE_H - 4);
-  doc.setLineDashPattern([], 0);
-  doc.setDrawColor(0);
+    // Linha de corte central entre as duas vias
+    doc.setDrawColor(150);
+    doc.setLineWidth(0.2);
+    doc.setLineDashPattern([1.5, 1.5], 0);
+    doc.line(VIA_W, 4, VIA_W, PAGE_H - 4);
+    doc.setLineDashPattern([], 0);
+    doc.setDrawColor(0);
+  }
 
   return doc;
 };

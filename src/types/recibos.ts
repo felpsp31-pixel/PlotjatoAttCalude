@@ -43,6 +43,8 @@ export interface LinhaRecibo {
   quantity: number;
   unitPrice: number;
   total: number;
+  /** Só no orçamento: prazo do item em dias úteis, impresso abaixo da descrição. */
+  prazoDiasUteis?: number;
 }
 
 export interface Recibo {

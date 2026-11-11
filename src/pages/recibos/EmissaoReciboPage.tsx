@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useRecibos } from '@/contexts/RecibosContext';
@@ -13,6 +13,7 @@ import type { LinhaRecibo } from '@/types/recibos';
 import { generateReciboPdf, buildReciboFileName } from '@/lib/reciboPdf';
 import { hojeBR } from '@/lib/dataLocal';
 import { formatarDocumento, formatarTelefone } from '@/lib/documento';
+import { cn } from '@/lib/utils';
 
 const formatDate = (date: string) => {
   if (!date) return '—';
@@ -219,6 +220,9 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
       } else if (field === 'unitPrice') {
         line.unitPrice = Number(String(value).replace(',', '.')) || 0;
         line.total = line.quantity * line.unitPrice;
+      } else if (field === 'prazoDiasUteis') {
+        const dias = Math.max(0, Math.floor(Number(value) || 0));
+        line.prazoDiasUteis = dias || undefined;
       }
       next[idx] = line;
       return next;
@@ -550,7 +554,8 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
           </TableHeader>
           <TableBody>
             {lines.map((line, idx) => (
-              <TableRow key={idx} className="h-8">
+              <Fragment key={idx}>
+              <TableRow className={cn('h-8', orcamento && line.serviceCode && 'border-b-0')}>
                 <TableCell className="py-0.5 px-2">
                   <Combobox options={servicoOptions} value={line.serviceCode} onValueChange={v => updateLine(idx, 'serviceCode', v)} placeholder="Código" disabled={saved} />
                 </TableCell>
@@ -571,6 +576,28 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
                   {line.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </TableCell>
               </TableRow>
+              {orcamento && line.serviceCode && (
+                <TableRow className="h-8 hover:bg-transparent">
+                  <TableCell colSpan={5} className="pt-0 pb-1.5 px-2">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      Prazo
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        step={1}
+                        value={line.prazoDiasUteis ?? ''}
+                        onChange={e => updateLine(idx, 'prazoDiasUteis', e.target.value)}
+                        placeholder="0"
+                        aria-label={`Prazo do item ${idx + 1} em dias úteis`}
+                        className="h-7 w-16 text-base"
+                      />
+                      dias úteis
+                    </label>
+                  </TableCell>
+                </TableRow>
+              )}
+              </Fragment>
             ))}
           </TableBody>
         </Table>

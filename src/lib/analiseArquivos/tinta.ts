@@ -13,3 +13,16 @@ export function fracaoTinta(rgba: Uint8ClampedArray): number {
   }
   return tinta / total;
 }
+
+/**
+ * Limite de pixels por página desenhada. A 72 DPI um A0 tem 8 milhões; uma faixa
+ * de vários metros pode passar do que o navegador aceita num canvas. Acima disso a
+ * página é desenhada menor: o preenchimento é uma proporção e quase não muda.
+ */
+export const MAX_PIXELS = 40_000_000;
+
+/** Escala para desenhar a página: 1 (72 DPI) ou menos, se passar do limite de pixels. */
+export function escalaDesenho(larguraPx: number, alturaPx: number, maxPixels = MAX_PIXELS): number {
+  const area = larguraPx * alturaPx;
+  return area > maxPixels ? Math.sqrt(maxPixels / area) : 1;
+}

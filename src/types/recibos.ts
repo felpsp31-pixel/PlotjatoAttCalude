@@ -53,6 +53,8 @@ export interface Recibo {
   clienteAvulso?: string;
   solicitanteId: string;
   obraId: string;
+  /** Obra digitada na hora, quando nao ha cadastro. */
+  obraAvulsa?: string;
   lines: LinhaRecibo[];
   total: number;
   /** Pago no ato da emissao; entra no fechamento como ja recebido. */

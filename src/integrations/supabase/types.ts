@@ -518,6 +518,7 @@ export type Database = {
           is_pago: boolean
           lines: Json
           number: string
+          obra_avulsa: string | null
           obra_id: string | null
           solicitante_id: string | null
           total: number
@@ -532,6 +533,7 @@ export type Database = {
           is_pago?: boolean
           lines?: Json
           number: string
+          obra_avulsa?: string | null
           obra_id?: string | null
           solicitante_id?: string | null
           total?: number
@@ -546,6 +548,7 @@ export type Database = {
           is_pago?: boolean
           lines?: Json
           number?: string
+          obra_avulsa?: string | null
           obra_id?: string | null
           solicitante_id?: string | null
           total?: number

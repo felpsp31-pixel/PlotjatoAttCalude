@@ -21,7 +21,7 @@ const DashboardReciboPage = () => {
     const ctx = {
       cliente: clientes.find(c => c.id === r.clienteId),
       solicitante: solicitantes.find(s => s.id === r.solicitanteId),
-      obra: obras.find(o => o.id === r.obraId),
+      obra: obras.find(o => o.id === r.obraId) ?? (r.obraAvulsa ? { name: r.obraAvulsa } : undefined),
       empresaInfo,
       isPago: r.isPago,
       formaPagamento: r.formaPagamento,

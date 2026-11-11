@@ -37,6 +37,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [solicitanteId, setSolicitanteId] = useState('');
   const [obraId, setObraId] = useState('');
+  const [obraAvulsa, setObraAvulsa] = useState('');
   const [lines, setLines] = useState<LinhaRecibo[]>(emptyLines());
   const [saved, setSaved] = useState(false);
   const [lastRecibo, setLastRecibo] = useState<typeof recibos[0] | null>(null);
@@ -224,6 +225,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     const recibo = await addRecibo({
       date: hojeBR(),
       isPago, formaPagamento: isPago ? formaPagamento : undefined,
+      obraAvulsa: obraId ? undefined : obraAvulsa.trim() || undefined,
       clienteId: clienteId || '',
       clienteAvulso: clienteId ? undefined : clienteAvulso.trim(),
       solicitanteId, obraId,
@@ -245,14 +247,14 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
 
   const handleNew = () => {
     setClienteId(''); setClienteAvulso(''); setClienteSearch(''); setSolicitanteId(''); setObraId('');
-    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(false); setFormaPagamento('');
+    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(false); setFormaPagamento(''); setObraAvulsa('');
     setHasDiscount(false); setDiscountInput(''); setDiscountType('percent');
   };
 
   const pdfContext = () => ({
     cliente: clientes.find(c => c.id === lastRecibo?.clienteId),
     solicitante: solicitantes.find(s => s.id === lastRecibo?.solicitanteId),
-    obra: obras.find(o => o.id === lastRecibo?.obraId),
+    obra: obras.find(o => o.id === lastRecibo?.obraId) ?? (lastRecibo?.obraAvulsa ? { name: lastRecibo.obraAvulsa } : undefined),
     empresaInfo,
     isPago,
     formaPagamento: isPago ? formaPagamento : undefined,
@@ -268,12 +270,13 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     const doc = {
       id: 'orcamento', number: '', date: hojeBR(),
       clienteId: clienteId || '', clienteAvulso: clienteId ? undefined : clienteAvulso.trim(),
-      solicitanteId, obraId, lines: montado.validLines, total: montado.total,
+      solicitanteId, obraId, obraAvulsa: obraId ? undefined : obraAvulsa.trim() || undefined,
+      lines: montado.validLines, total: montado.total,
     };
     const ctx = {
       cliente: clientes.find(c => c.id === clienteId),
       solicitante: solicitantes.find(s => s.id === solicitanteId),
-      obra: obras.find(o => o.id === obraId),
+      obra: obras.find(o => o.id === obraId) ?? (obraAvulsa.trim() ? { name: obraAvulsa.trim() } : undefined),
       empresaInfo,
       tipo: 'orcamento' as const,
       descontoLabel: hasDiscount && discountType === 'percent'
@@ -416,7 +419,16 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
         </div>
         <div>
           <label className="text-xs font-medium text-foreground">Obra</label>
-          <Combobox options={filteredObras.map(o => ({ value: o.id, label: o.name }))} value={obraId} onValueChange={setObraId} placeholder="Selecione" disabled={saved || !clienteId} />
+          <Combobox
+            options={filteredObras.map(o => ({ value: o.id, label: o.name }))}
+            value={obraId}
+            onValueChange={(v) => { setObraId(v); setObraAvulsa(''); }}
+            textoLivre={obraAvulsa}
+            onTextoLivre={(t) => { setObraAvulsa(t); setObraId(''); }}
+            placeholder="Selecione ou digite"
+            searchPlaceholder="Buscar ou digitar obra..."
+            disabled={saved}
+          />
         </div>
       </div>
 

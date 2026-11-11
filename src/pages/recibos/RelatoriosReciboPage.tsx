@@ -70,7 +70,7 @@ const RelatoriosReciboPage = () => {
     const header = 'Nº,Data,Cliente,Obra,Valor\n';
     const rows = sorted.map(r => {
       const nome = clientes.find(c => c.id === r.clienteId)?.name ?? '';
-      const obraNome = obras.find(o => o.id === r.obraId)?.name ?? '';
+      const obraNome = obras.find(o => o.id === r.obraId)?.name ?? r.obraAvulsa ?? '';
       return `${r.number},${formatDate(r.date)},"${nome}","${obraNome}",${r.total.toFixed(2)}`;
     }).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
@@ -95,7 +95,7 @@ const RelatoriosReciboPage = () => {
         r.number,
         formatDate(r.date),
         clientes.find(c => c.id === r.clienteId)?.name ?? '',
-        obras.find(o => o.id === r.obraId)?.name ?? '',
+        obras.find(o => o.id === r.obraId)?.name ?? r.obraAvulsa ?? '',
         r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
       ]),
     });
@@ -164,7 +164,7 @@ const RelatoriosReciboPage = () => {
                   <TableCell className="text-foreground">{r.number}</TableCell>
                   <TableCell className="text-foreground">{formatDate(r.date)}</TableCell>
                   <TableCell className="text-foreground">{clientes.find(c => c.id === r.clienteId)?.name ?? '—'}</TableCell>
-                  <TableCell className="text-foreground">{obras.find(o => o.id === r.obraId)?.name ?? '—'}</TableCell>
+                  <TableCell className="text-foreground">{obras.find(o => o.id === r.obraId)?.name ?? r.obraAvulsa ?? '—'}</TableCell>
                   <TableCell className="text-foreground">{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                   <TableCell>
                     <AlertDialog>

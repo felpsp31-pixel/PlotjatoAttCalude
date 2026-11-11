@@ -21,7 +21,7 @@ const brl = (v: number) =>
 export interface ReciboPdfContext {
   cliente?: Cliente;
   solicitante?: Solicitante;
-  obra?: Obra;
+  obra?: Pick<Obra, 'name'>;
   empresaInfo: EmpresaInfo;
   isPago?: boolean;
   /** 'orcamento' imprime ORÇAMENTO sem número, sem carimbo nem assinatura. */

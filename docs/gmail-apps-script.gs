@@ -14,6 +14,10 @@
  *     O Google vai pedir autorização: aceite (é a sua própria conta).
  *  5. Rode "instalarGatilho" uma vez: a partir daí roda sozinho a cada 5 min.
  *
+ * Só envia e-mails recebidos a partir da primeira execução: o que chegou antes
+ * fica de fora. Para recomeçar a contar de agora (por exemplo, depois de limpar
+ * a fila), rode "recomecarDeAgora".
+ *
  * Para parar: rode "removerGatilho", ou apague o projeto.
  */
 
@@ -28,11 +32,32 @@ var BUSCA = 'in:inbox -category:promotions -category:social newer_than:2d';
 // Teto por execução, para não estourar o tempo do Apps Script.
 var MAX_MENSAGENS = 40;
 
+/**
+ * Momento a partir do qual os e-mails contam. Gravado na primeira execução,
+ * para que o histórico da caixa não entre no sistema de uma vez.
+ */
+function marcoInicial() {
+  var props = PropertiesService.getScriptProperties();
+  var v = props.getProperty('INICIO');
+  if (!v) {
+    v = String(Date.now());
+    props.setProperty('INICIO', v);
+    Logger.log('Marco inicial gravado: ' + new Date(Number(v)));
+  }
+  return Number(v);
+}
+
+function recomecarDeAgora() {
+  PropertiesService.getScriptProperties().setProperty('INICIO', String(Date.now()));
+  Logger.log('A partir de agora, só e-mails novos.');
+}
+
 function enviarEmails() {
   if (SEGREDO === 'COLE_AQUI_O_SEGREDO') {
     throw new Error('Preencha a variável SEGREDO antes de rodar.');
   }
 
+  var inicio = marcoInicial();
   var conversas = GmailApp.search(BUSCA, 0, 50);
   var enviados = 0, repetidos = 0, erros = 0;
 
@@ -40,6 +65,7 @@ function enviarEmails() {
     var mensagens = conversas[i].getMessages();
     for (var j = 0; j < mensagens.length && enviados + repetidos < MAX_MENSAGENS; j++) {
       var m = mensagens[j];
+      if (m.getDate().getTime() < inicio) continue;  // anterior à implantação
       // O sistema recusa repetidos pelo id, então não precisamos guardar estado
       // aqui: um e-mail já enviado volta como "duplicado" sem custo de IA.
       var resposta = enviarUma(m);

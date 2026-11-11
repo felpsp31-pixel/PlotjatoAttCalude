@@ -241,7 +241,7 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
       </Button>
 
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) contar(); }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="w-[min(42rem,calc(100vw-2rem))] max-w-none max-h-[85vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>{rotulo}</DialogTitle>
             <DialogDescription>
@@ -258,7 +258,7 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
               {emails.map((e) => {
                 const c = campos(e);
                 return (
-                  <article key={e.id} className="rounded-xl border p-4 space-y-3">
+                  <article key={e.id} className="rounded-xl border p-4 space-y-3 overflow-hidden">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{e.assunto || '(sem assunto)'}</p>
@@ -280,8 +280,8 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
 
                     {e.motivo && <p className="text-xs text-muted-foreground italic">{e.motivo}</p>}
                     {e.anexos?.length > 0 && (
-                      <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                        <Paperclip className="h-3.5 w-3.5" />
+                      <p className="text-xs text-muted-foreground flex items-start gap-1 break-words">
+                        <Paperclip className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                         {e.anexos.map((a) => a?.nome).filter(Boolean).join(', ')}
                         {tipo === 'cobranca' && ' — baixe no Gmail e anexe ao lançamento'}
                       </p>
@@ -289,11 +289,11 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
 
                     <details className="text-xs">
                       <summary className="cursor-pointer text-muted-foreground min-h-[32px] flex items-center">Ver o e-mail</summary>
-                      <pre className="whitespace-pre-wrap font-sans mt-2 text-muted-foreground max-h-40 overflow-y-auto">{e.resumo}</pre>
+                      <pre className="whitespace-pre-wrap break-words font-sans mt-2 text-muted-foreground max-h-40 overflow-y-auto">{e.resumo}</pre>
                     </details>
 
                     {tipo === 'demanda' ? (
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 sm:grid-cols-2 [&>div]:min-w-0">
                         <div className="space-y-1">
                           <Label className="text-xs">Cliente</Label>
                           <Input value={c.cliente ?? ''} onChange={(ev) => mudar(e.id, 'cliente', ev.target.value)} className="text-base" />
@@ -313,9 +313,9 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Prazo</Label>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 min-w-0">
                             <Input type="date" value={c.prazo ?? ''} onChange={(ev) => mudar(e.id, 'prazo', ev.target.value)} className="text-base" />
-                            <Input type="time" value={c.hora ?? '17:00'} onChange={(ev) => mudar(e.id, 'hora', ev.target.value)} className="text-base w-28" />
+                            <Input type="time" value={c.hora ?? '17:00'} onChange={(ev) => mudar(e.id, 'hora', ev.target.value)} className="text-base w-28 shrink-0" />
                           </div>
                         </div>
                         <div className="space-y-1">
@@ -332,7 +332,7 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
                         </div>
                       </div>
                     ) : (
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 sm:grid-cols-2 [&>div]:min-w-0">
                         <div className="space-y-1 sm:col-span-2">
                           <Label className="text-xs">Fornecedor</Label>
                           <Select value={c.fornecedorId ?? ''} onValueChange={(v) => mudar(e.id, 'fornecedorId', v)}>

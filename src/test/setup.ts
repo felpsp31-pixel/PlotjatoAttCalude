@@ -13,3 +13,16 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+// O jsdom nao tem ResizeObserver nem scrollIntoView, de que os componentes
+// de popover/command do Radix precisam para medir e rolar.
+if (!('ResizeObserver' in globalThis)) {
+  (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

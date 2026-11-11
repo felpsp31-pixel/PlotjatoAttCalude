@@ -51,7 +51,7 @@ const Combobox = ({ options, value, onValueChange, placeholder = 'Selecione...',
             )}
             <CommandGroup>
               {options.map(o => (
-                <CommandItem key={o.value} value={o.label} onSelect={() => { onValueChange(o.value); onTextoLivre?.(''); setBusca(''); setOpen(false); }}>
+                <CommandItem key={o.value} value={o.label} onSelect={() => { onValueChange(o.value); setBusca(''); setOpen(false); }}>
                   <Check className={cn('mr-2 h-4 w-4', value === o.value ? 'opacity-100' : 'opacity-0')} />
                   {o.label}
                 </CommandItem>

@@ -271,6 +271,63 @@ export type Database = {
         }
         Relationships: []
       }
+      emails_recebidos: {
+        Row: {
+          anexos: Json
+          assunto: string
+          criado_em: string
+          dados: Json
+          gmail_id: string
+          id: string
+          link: string | null
+          motivo: string | null
+          recebido_em: string
+          remetente: string
+          remetente_email: string
+          resultado_id: string | null
+          resumo: string
+          revisado_em: string | null
+          status: string
+          tipo: string
+        }
+        Insert: {
+          anexos?: Json
+          assunto?: string
+          criado_em?: string
+          dados?: Json
+          gmail_id: string
+          id?: string
+          link?: string | null
+          motivo?: string | null
+          recebido_em: string
+          remetente?: string
+          remetente_email?: string
+          resultado_id?: string | null
+          resumo?: string
+          revisado_em?: string | null
+          status?: string
+          tipo: string
+        }
+        Update: {
+          anexos?: Json
+          assunto?: string
+          criado_em?: string
+          dados?: Json
+          gmail_id?: string
+          id?: string
+          link?: string | null
+          motivo?: string | null
+          recebido_em?: string
+          remetente?: string
+          remetente_email?: string
+          resultado_id?: string | null
+          resumo?: string
+          revisado_em?: string | null
+          status?: string
+          tipo?: string
+        }
+        Relationships: []
+      }
       empresa_info: {
         Row: {
           address: string

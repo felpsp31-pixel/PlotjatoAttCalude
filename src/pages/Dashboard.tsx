@@ -31,6 +31,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { hojeBR, somarDias } from '@/lib/dataLocal';
+import RevisarEmails from '@/components/RevisarEmails';
 
 const MIN_SIDEBAR = 260;
 const MAX_SIDEBAR = 450;
@@ -398,6 +399,7 @@ const Dashboard = () => {
                 } : undefined}
               />
               <div className="flex items-center gap-2 flex-wrap">
+                <RevisarEmails tipo="cobranca" onAprovado={() => { refetch(); fetchCasual(); }} />
                 <ImportNotaFiscalDialog
                   onImported={() => { refetch(); fetchCasual(); }}
                 />

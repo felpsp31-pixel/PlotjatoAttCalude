@@ -9,3 +9,8 @@ verify_jwt = false
 # Idem: o pg_cron chama com o header x-cleanup-secret, conferido na funcao.
 [functions.cleanup-demandas]
 verify_jwt = false
+
+# O script do Gmail nao tem login: a autorizacao e o header x-email-secret,
+# conferido na propria funcao.
+[functions.receber-email]
+verify_jwt = false

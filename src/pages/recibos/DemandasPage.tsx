@@ -23,6 +23,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import ThemeToggle from '@/components/ThemeToggle';
+import RevisarEmails from '@/components/RevisarEmails';
 
 interface Demanda {
   id: string;
@@ -651,6 +652,7 @@ const DemandasPage = () => {
           >
             <PieChartIcon className="h-4 w-4" />
           </Button>
+          <RevisarEmails tipo="demanda" onAprovado={fetchAll} />
           <ThemeToggle expanded={false} />
           <Popover open={filterOpen} onOpenChange={setFilterOpen}>
             <PopoverTrigger asChild>

@@ -145,8 +145,12 @@ Escolha UM tipo:
   rede social, confirmação de cadastro, spam, corrente, cobrança de teste.
 
 Regras:
-- Na dúvida entre "demanda" e "ignorar", escolha "ignorar": uma oferta
-  comercial recebida NÃO é um pedido de cliente.
+- A lista de serviços cadastrados NÃO decide o tipo. Um cliente pedindo
+  qualquer impressão, plotagem, cópia ou acabamento é "demanda", mesmo que o
+  serviço não esteja na lista: nesse caso "servico" fica null e pronto.
+  Arquivo em anexo com pedido para imprimir é sempre "demanda".
+- Na dúvida entre "demanda" e "ignorar", escolha "ignorar" apenas quando NÃO
+  houver pedido nenhum: uma oferta comercial recebida não é pedido de cliente.
 - Propaganda de fornecedor com preços e boleto de exemplo é "ignorar", não
   "cobranca". Só é cobrança se houver uma dívida real da gráfica.
 - Use SOMENTE o que está escrito. O que não estiver claro é null. Não invente

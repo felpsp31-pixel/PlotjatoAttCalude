@@ -49,6 +49,7 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
   const [form, setForm] = useState<Record<string, Record<string, string>>>({});
   const [servicos, setServicos] = useState<string[]>([]);
   const [fornecedores, setFornecedores] = useState<{ id: string; name: string }[]>([]);
+  const [ignorados, setIgnorados] = useState<EmailRecebido[] | null>(null);
 
   const campos = useCallback((e: EmailRecebido) => form[e.id] ?? {}, [form]);
   const mudar = (id: string, campo: string, valor: string) =>
@@ -104,6 +105,43 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
       const { data } = await supabase.from('suppliers').select('id, name').order('name');
       setFornecedores(data ?? []);
     }
+  };
+
+  // A IA erra para o lado de ignorar. Esta lista deixa recuperar um pedido
+  // que foi parar na propaganda por engano.
+  const verIgnorados = async () => {
+    const { data } = await supabase
+      .from('emails_recebidos')
+      .select('id, recebido_em, remetente, remetente_email, assunto, resumo, anexos, link, motivo, dados')
+      .eq('tipo', 'ignorar')
+      .eq('status', 'a_revisar')
+      .order('recebido_em', { ascending: false })
+      .limit(50);
+    setIgnorados((data ?? []) as unknown as EmailRecebido[]);
+  };
+
+  const resgatar = async (e: EmailRecebido) => {
+    const { error } = await supabase.from('emails_recebidos').update({ tipo: 'demanda' }).eq('id', e.id);
+    if (error) { toast.error('Erro ao mover o e-mail.'); return; }
+    setIgnorados((p) => (p ?? []).filter((x) => x.id !== e.id));
+    toast.success('Movido para os pedidos a revisar.');
+    await carregar();
+  };
+
+  // Cadastra na hora o fornecedor que a IA leu do e-mail: sem ele, a cobranca
+  // nao tem onde ser lancada.
+  const cadastrarFornecedor = async (e: EmailRecebido) => {
+    const nome = texto(e.dados.fornecedor).trim();
+    if (!nome) return;
+    const { data, error } = await supabase
+      .from('suppliers')
+      .insert({ name: nome, email: e.remetente_email || null, retains_iss: false })
+      .select('id, name')
+      .single();
+    if (error) { toast.error('Erro ao cadastrar o fornecedor.'); return; }
+    setFornecedores((p) => [...p, data].sort((a, b) => a.name.localeCompare(b.name)));
+    mudar(e.id, 'fornecedorId', data.id);
+    toast.success(`${data.name} cadastrado.`);
   };
 
   const baixar = async (e: EmailRecebido, resultadoId: string | null) => {
@@ -305,6 +343,11 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
                               {fornecedores.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
+                          {!c.fornecedorId && texto(e.dados.fornecedor) && (
+                            <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => cadastrarFornecedor(e)}>
+                              Cadastrar "{texto(e.dados.fornecedor)}" como fornecedor
+                            </Button>
+                          )}
                         </div>
                         <div className="space-y-1 sm:col-span-2">
                           <Label className="text-xs">Descrição</Label>
@@ -333,6 +376,34 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
                   </article>
                 );
               })}
+            </div>
+          )}
+          {tipo === 'demanda' && !carregando && (
+            <div className="border-t pt-3 mt-2">
+              {ignorados === null ? (
+                <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={verIgnorados}>
+                  Ver e-mails classificados como propaganda
+                </Button>
+              ) : ignorados.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum e-mail na propaganda.</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Descartados pela IA. Se algum for pedido de cliente, traga para a fila.
+                  </p>
+                  {ignorados.map((e) => (
+                    <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 text-xs border rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate">{e.assunto || '(sem assunto)'}</p>
+                        <p className="text-muted-foreground truncate">{e.remetente} · {e.motivo}</p>
+                      </div>
+                      <Button size="sm" variant="outline" className="shrink-0" onClick={() => resgatar(e)}>
+                        É um pedido
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

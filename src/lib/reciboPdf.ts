@@ -135,9 +135,23 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
     doc.text(formatDate(r.date), right, y, { align: 'right' });
     y += 4.6;
 
-    const info: string[] = [
-      `Cliente: ${clienteName}${cliente?.cnpj ? ` — CNPJ: ${cliente.cnpj}` : ''}`,
-    ];
+    // O nome do cliente sai 50% maior que o resto: e o que se procura
+    // primeiro no recibo, de longe.
+    const TAM_INFO = 6.5;
+    const TAM_CLIENTE = TAM_INFO * 1.5;
+    const rotulo = 'Cliente: ';
+    doc.setFontSize(TAM_INFO);
+    doc.text(rotulo, left, y);
+    const xNome = left + doc.getTextWidth(rotulo);
+    doc.setFontSize(TAM_CLIENTE);
+    const linhasNome: string[] = doc.splitTextToSize(clienteName, innerW - (xNome - left));
+    doc.text(linhasNome[0] ?? '', xNome, y);
+    linhasNome.slice(1).forEach((t: string) => { y += 4; doc.text(t, left, y); });
+    y += 4;
+
+    doc.setFontSize(TAM_INFO);
+    const info: string[] = [];
+    if (cliente?.cnpj) info.push(`CNPJ: ${cliente.cnpj}`);
     if (solicitante) info.push(`Solicitante: ${solicitante.name}`);
     if (obra) info.push(`Obra: ${obra.name}`);
     info.forEach(txt => {

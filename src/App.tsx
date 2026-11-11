@@ -22,6 +22,7 @@ const RecibosLayout = lazy(() => import("@/components/recibos/RecibosLayout"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const EmissaoReciboPage = lazy(() => import("./pages/recibos/EmissaoReciboPage"));
+const AnalisarArquivosPage = lazy(() => import("./pages/recibos/AnalisarArquivosPage"));
 const ClientesReciboPage = lazy(() => import("./pages/recibos/ClientesReciboPage"));
 const ServicosReciboPage = lazy(() => import("./pages/recibos/ServicosReciboPage"));
 const DashboardReciboPage = lazy(() => import("./pages/recibos/DashboardReciboPage"));
@@ -106,6 +107,7 @@ const App = () => (
                   <Route path="/recibos" element={<RecibosLayout />}>
                     <Route index element={<EmissaoReciboPage key="recibo" />} />
                     <Route path="orcamento" element={<EmissaoReciboPage key="orcamento" modo="orcamento" />} />
+                    <Route path="analisar" element={<AnalisarArquivosPage />} />
                     <Route path="clientes" element={<ClientesReciboPage />} />
                     <Route path="servicos" element={<ServicosReciboPage />} />
                     <Route path="dashboard" element={<DashboardReciboPage />} />

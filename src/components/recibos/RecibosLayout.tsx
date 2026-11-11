@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { FileText, FileSignature, Users, Wrench, BarChart3, FileBarChart, Settings, ArrowLeft, Menu } from 'lucide-react';
+import { FileText, FileSignature, FileSearch, Users, Wrench, BarChart3, FileBarChart, Settings, ArrowLeft, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 const links = [
   { to: '/recibos', label: 'Recibos', icon: FileText, end: true },
   { to: '/recibos/orcamento', label: 'Orçamento', icon: FileSignature, end: false },
+  { to: '/recibos/analisar', label: 'Analisar arquivos', icon: FileSearch, end: false },
   { to: '/recibos/clientes', label: 'Clientes', icon: Users, end: false },
   { to: '/recibos/servicos', label: 'Serviços', icon: Wrench, end: false },
   { to: '/recibos/dashboard', label: 'Dashboard', icon: BarChart3, end: false },

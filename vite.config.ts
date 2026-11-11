@@ -53,7 +53,7 @@ export default defineConfig(() => ({
       // Tirar daqui não impede o carregamento: o import dinâmico busca na
       // hora em que for preciso.
       resolveDependencies: (_url, deps) =>
-        deps.filter((d) => !/\/(pdf|xlsx|charts)-[^/]*\.js$/.test(d)),
+        deps.filter((d) => !/\/(pdf|pdfjs|xlsx|charts)-[^/]*\.js$/.test(d)),
     },
     rollupOptions: {
       output: {
@@ -72,6 +72,8 @@ export default defineConfig(() => ({
           // pedaços passam a se importar em círculo e o React chega indefinido
           // na avaliação do radix — tela branca com "forwardRef of undefined".
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react";
+          // Leitor de PDF da tela Analisar arquivos: só baixa quando alguém analisa.
+          if (id.includes("pdfjs-dist")) return "pdfjs";
           if (id.includes("jspdf") || id.includes("html2canvas")) return "pdf";
           if (id.includes("xlsx")) return "xlsx";
           if (id.includes("recharts") || id.includes("d3-")) return "charts";

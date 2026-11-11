@@ -18,6 +18,7 @@
  * fica de fora. Para recomeçar a contar de agora (por exemplo, depois de limpar
  * a fila), rode "recomecarDeAgora".
  *
+ * Se parar de chegar e-mail no sistema, rode "diagnostico" e veja o registro.
  * Para parar: rode "removerGatilho", ou apague o projeto.
  */
 
@@ -55,6 +56,51 @@ function marcoInicial() {
 function recomecarDeAgora() {
   PropertiesService.getScriptProperties().setProperty('INICIO', String(Date.now()));
   Logger.log('A partir de agora, só e-mails novos.');
+}
+
+/** Recupera os e-mails de hoje que ficaram de fora: conta desde a meia-noite. */
+function recomecarDeHoje() {
+  var d = new Date();
+  d.setHours(0, 0, 0, 0);
+  PropertiesService.getScriptProperties().setProperty('INICIO', String(d.getTime()));
+  Logger.log('Contando desde ' + d + '. Rode enviarEmails para enviar o que faltou.');
+}
+
+/** Mostra o estado do script: marco, agendamento e o que a busca encontra. */
+function diagnostico() {
+  var inicio = PropertiesService.getScriptProperties().getProperty('INICIO');
+  Logger.log('Marco inicial: ' + (inicio ? new Date(Number(inicio)) : 'ainda não gravado'));
+
+  var gatilhos = ScriptApp.getProjectTriggers().filter(function (g) {
+    return g.getHandlerFunction() === 'enviarEmails';
+  });
+  Logger.log('Agendamentos ativos: ' + gatilhos.length + (gatilhos.length ? '' : '  <-- rode instalarGatilho'));
+
+  var conversas = GmailApp.search(BUSCA, 0, 50);
+  var total = 0, novos = 0, maisNovo = null;
+  for (var i = 0; i < conversas.length; i++) {
+    var ms = conversas[i].getMessages();
+    for (var j = 0; j < ms.length; j++) {
+      total++;
+      var d = ms[j].getDate();
+      if (!maisNovo || d > maisNovo) maisNovo = d;
+      if (inicio && d.getTime() >= Number(inicio)) novos++;
+    }
+  }
+  Logger.log('A busca encontra ' + total + ' mensagem(ns); ' + novos + ' depois do marco.');
+  Logger.log('Mensagem mais recente da busca: ' + (maisNovo || 'nenhuma'));
+
+  try {
+    var r = UrlFetchApp.fetch(URL_SISTEMA, {
+      method: 'post', contentType: 'application/json',
+      headers: { 'x-email-secret': SEGREDO },
+      payload: JSON.stringify({ gmail_id: 'ping-' + Date.now() }),
+      muteHttpExceptions: true
+    });
+    Logger.log('Resposta do sistema: ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 120));
+  } catch (e) {
+    Logger.log('Sem resposta do sistema: ' + e);
+  }
 }
 
 function enviarEmails() {

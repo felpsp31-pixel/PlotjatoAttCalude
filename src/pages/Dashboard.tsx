@@ -306,6 +306,7 @@ const Dashboard = () => {
             {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
           </button>
           <div className="flex-1" />
+          <RevisarEmails tipo="cobranca" estilo="botao" onAprovado={() => { refetch(); fetchCasual(); }} />
           <Button
             variant="outline"
             size="sm"
@@ -399,7 +400,6 @@ const Dashboard = () => {
                 } : undefined}
               />
               <div className="flex items-center gap-2 flex-wrap">
-                <RevisarEmails tipo="cobranca" onAprovado={() => { refetch(); fetchCasual(); }} />
                 <ImportNotaFiscalDialog
                   onImported={() => { refetch(); fetchCasual(); }}
                 />

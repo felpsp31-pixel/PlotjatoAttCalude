@@ -17,12 +17,14 @@ import {
 interface Props {
   tipo: 'demanda' | 'cobranca';
   onAprovado?: () => void;
+  /** 'botao' mostra o rótulo ao lado do ícone, para barras com outros botões. */
+  estilo?: 'icone' | 'botao';
 }
 
 const texto = (v: unknown) => (typeof v === 'string' ? v : '');
 const numero = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : '');
 
-const RevisarEmails = ({ tipo, onAprovado }: Props) => {
+const RevisarEmails = ({ tipo, onAprovado, estilo = 'icone' }: Props) => {
   const [open, setOpen] = useState(false);
   const [emails, setEmails] = useState<EmailRecebido[]>([]);
   const [carregando, setCarregando] = useState(false);
@@ -208,15 +210,21 @@ const RevisarEmails = ({ tipo, onAprovado }: Props) => {
   return (
     <>
       <Button
-        variant="ghost"
-        size="icon"
+        variant={estilo === 'botao' ? 'outline' : 'ghost'}
+        size={estilo === 'botao' ? 'sm' : 'icon'}
         title={`${rotulo} a revisar`}
         onClick={abrir}
-        className="relative min-h-[40px] min-w-[40px]"
+        className={estilo === 'botao' ? 'relative gap-1' : 'relative min-h-[40px] min-w-[40px]'}
       >
         <Mail className="h-4 w-4" />
+        {estilo === 'botao' && (
+          <>
+            <span className="hidden sm:inline">E-mails recebidos</span>
+            <span className="sm:hidden">E-mails</span>
+          </>
+        )}
         {quantos > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
             {quantos}
           </span>
         )}

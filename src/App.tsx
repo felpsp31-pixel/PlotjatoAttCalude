@@ -14,6 +14,7 @@ import FinanceiroGuard from "@/components/FinanceiroGuard";
 import LoginPage from "./pages/LoginPage";
 import HomePage from "./pages/HomePage";
 import AvisoAtualizacao from '@/components/AvisoAtualizacao';
+import DestravarTela from '@/components/DestravarTela';
 
 // Lazy-load heavy pages and layouts (jspdf, recharts, kanban, etc.)
 const FinanceiroLayout = lazy(() => import("@/components/FinanceiroLayout"));
@@ -92,6 +93,7 @@ const App = () => (
       <AuthProvider>
         <RecibosProvider>
           <BrowserRouter>
+            <DestravarTela />
             <Suspense fallback={<PageFallback />}>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />

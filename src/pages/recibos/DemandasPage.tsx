@@ -1293,15 +1293,18 @@ const DemandasPage = () => {
           <div className="flex flex-col gap-2">
             <Button className="w-full gap-2" onClick={() => {
               const clienteRegistrado = clientes.find(c => c.name.toLowerCase() === completedDemandaData?.cliente_nome?.toLowerCase());
-              setShowReciboButton(false);
-              navigate('/recibos', { state: {
+              const destino = {
                 clienteNome: completedDemandaData?.cliente_nome,
                 clienteId: clienteRegistrado?.id || completedDemandaData?.cliente_id || null,
                 isAvulso: !clienteRegistrado,
                 obraId: completedDemandaData?.obra_id || null,
                 solicitanteId: completedDemandaData?.solicitante_id || null,
                 demandaId: completedDemandaData?.id || null,
-              } });
+              };
+              setShowReciboButton(false);
+              // So muda de tela depois que a janela terminou de fechar; trocar
+              // no mesmo instante deixava a pagina sem responder a cliques.
+              setTimeout(() => navigate('/recibos', { state: destino }), 250);
             }}>
               <FileText className="h-4 w-4" /> Emitir Recibo
             </Button>

@@ -169,8 +169,11 @@ Se for "cobranca", preencha "cobranca":
   vários, o total a pagar.
 - "vencimento": YYYY-MM-DD, o vencimento do boleto ou da nota.
 - "documento": CNPJ de quem cobra, só os dígitos, se aparecer.
-- "linha_digitavel": a linha numérica do boleto copiada EXATAMENTE como está,
-  só os dígitos, sem pontos nem espaços. Sem boleto, null.
+- "linha_digitavel": PROCURE no boleto a linha numérica longa, impressa no
+  alto da página ou junto ao código de barras, com 44 a 48 dígitos separados
+  por pontos e espaços (ex.: 00190.00009 03577.981237 00000.046208 1 96050000
+  035790). Copie só os dígitos, na ordem, sem pontos nem espaços. Não havendo
+  essa linha, null -- não invente nem monte uma.
 - "descricao": o que está sendo cobrado, em poucas palavras.
 
 Se for "demanda", preencha "demanda":
@@ -184,8 +187,18 @@ Se for "demanda", preencha "demanda":
 - "prioridade": "urgente" (precisa hoje, diz que é urgente), "alta" (pressa
   declarada, prazo amanhã), "baixa" (diz que não tem pressa), "media" (resto).
 
-Responda SOMENTE com JSON válido, sem cercas de código e sem texto em volta:
-{"tipo":"demanda","motivo":"...","cobranca":null,"demanda":{"cliente":"...","telefone":null,"servico":null,"descricao":"...","prazo":null,"prioridade":"media"}}`;
+Responda SOMENTE com JSON válido, sem cercas de código e sem texto em volta,
+sempre com as duas chaves "cobranca" e "demanda" (a que não se aplica fica null)
+e com TODOS os campos da que se aplica, mesmo os que ficarem null.
+
+Cobrança:
+{"tipo":"cobranca","motivo":"...","cobranca":{"fornecedor":"...","valor":"1234.50","vencimento":"2026-12-05","documento":"12345678000190","linha_digitavel":"00190000090357798123700000046208196050000035790","descricao":"..."},"demanda":null}
+
+Pedido:
+{"tipo":"demanda","motivo":"...","cobranca":null,"demanda":{"cliente":"...","telefone":null,"servico":null,"descricao":"...","prazo":null,"prioridade":"media"}}
+
+Propaganda:
+{"tipo":"ignorar","motivo":"...","cobranca":null,"demanda":null}`;
 
 const texto_ou_null = (v: unknown) =>
   typeof v === "string" && v.trim() ? v.trim() : null;
@@ -202,9 +215,32 @@ const texto_ou_null = (v: unknown) =>
  * Boleto de concessionária (48 dígitos, começa com 8) não segue esse
  * formato: devolvemos null e fica valendo o que o modelo leu.
  */
+function dvMod10(digitos: string): number {
+  let soma = 0;
+  let peso = 2;
+  for (let i = digitos.length - 1; i >= 0; i--) {
+    const p = Number(digitos[i]) * peso;
+    soma += p > 9 ? p - 9 : p;
+    peso = peso === 2 ? 1 : 2;
+  }
+  return (10 - (soma % 10)) % 10;
+}
+
 function lerBoleto(linha: string | null): { valor: number | null; vencimento: string | null } {
   const d = (linha ?? "").replace(/\D/g, "");
   if (d.length !== 47 || d.startsWith("8")) return { valor: null, vencimento: null };
+
+  // Os tres primeiros campos carregam digito verificador. A IA as vezes copia
+  // a linha errada (pula ou troca um numero); sem os DVs batendo, nao da para
+  // confiar no que ela leu -- fica valendo o valor que ela entendeu do texto.
+  const campos: [string, string][] = [
+    [d.slice(0, 9), d[9]],
+    [d.slice(10, 20), d[20]],
+    [d.slice(21, 31), d[31]],
+  ];
+  for (const [corpo, dv] of campos) {
+    if (dvMod10(corpo) !== Number(dv)) return { valor: null, vencimento: null };
+  }
 
   const centavos = Number(d.slice(37, 47));
   const valor = Number.isFinite(centavos) && centavos > 0 ? centavos / 100 : null;

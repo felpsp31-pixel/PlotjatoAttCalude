@@ -45,6 +45,8 @@ export interface LinhaRecibo {
   total: number;
   /** Só no orçamento: prazo do item em dias úteis, impresso abaixo da descrição. */
   prazoDiasUteis?: number;
+  /** Só no orçamento: linha que veio da análise de arquivos (refeita se o cliente mudar). */
+  importKey?: string;
 }
 
 export interface Recibo {

@@ -204,7 +204,7 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
       tableWidth: innerW,
       head: [['Cód', 'Descrição', 'Qtd', 'Unit.', 'Total']],
       body: r.lines.map(l => [
-        l.serviceCode,
+        l.serviceCode.replace(/^CS:/, ''), // código da tabela própria do cliente sem o prefixo interno
         descricaoComPrazo(l),
         String(l.quantity),
         num(l.unitPrice),

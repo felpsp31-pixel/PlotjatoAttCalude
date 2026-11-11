@@ -55,6 +55,13 @@ describe('generateReciboPdf', () => {
   });
 });
 
+describe('código do item', () => {
+  it('não imprime o prefixo interno CS: da tabela própria do cliente', async () => {
+    const pdf = await generateReciboPdf(doc([{ serviceCode: 'CS:50', description: 'A1 Color', quantity: 1, unitPrice: 6.5, total: 6.5 }]), { empresaInfo, tipo: 'orcamento' });
+    expect(pdf.output()).not.toContain('CS:50');
+  });
+});
+
 describe('dados do cliente', () => {
   const cliente = { cnpj: '12.345.678/0001-90', phone: '(31) 99999-0000', email: 'obra@cliente.com' };
 

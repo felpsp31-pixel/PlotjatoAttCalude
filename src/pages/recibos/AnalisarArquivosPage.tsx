@@ -1,5 +1,8 @@
 import { Fragment, useMemo, useRef, useState } from 'react';
-import { FileWarning, FolderOpen, FileUp, Loader2, Upload, X } from 'lucide-react';
+import { FileSignature, FileWarning, FolderOpen, FileUp, Loader2, Upload, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -13,6 +16,7 @@ import {
   classificarFolha, corrigirPreenchimento, formatarCm, rotuloFormato, LIMITE_PREENCHIMENTO,
 } from '@/lib/analiseArquivos/regras';
 import { resumir, type ArquivoAnalisado, type FolhaAnalisada } from '@/lib/analiseArquivos/resumo';
+import { montarItens, NOME_COR, type CorImpressao, type ImportacaoAnalise } from '@/lib/analiseArquivos/paraOrcamento';
 
 // Lê formato e preenchimento de PDFs direto no navegador. Os arquivos não são
 // enviados para o Supabase: tudo acontece na memória desta aba.
@@ -43,6 +47,11 @@ const AnalisarArquivosPage = () => {
   const abortRef = useRef<AbortController | null>(null);
   const inputArquivos = useRef<HTMLInputElement>(null);
   const inputPasta = useRef<HTMLInputElement>(null);
+
+  const navigate = useNavigate();
+  const [envioAberto, setEnvioAberto] = useState(false);
+  const [cor, setCor] = useState<CorImpressao | null>(null);
+  const [copias, setCopias] = useState('1');
 
   const analisando = progresso !== null;
   const resumo = useMemo(() => resumir(resultados), [resultados]);
@@ -139,6 +148,13 @@ const AnalisarArquivosPage = () => {
   };
 
   const cancelar = () => abortRef.current?.abort();
+
+  const enviarParaOrcamento = () => {
+    if (!cor) return;
+    const n = Math.max(1, Math.floor(Number(copias)) || 1);
+    const importacaoAnalise: ImportacaoAnalise = { cor, copias: n, itens: montarItens(resultados, n) };
+    navigate('/recibos/orcamento', { state: { importacaoAnalise } });
+  };
 
   const pctProgresso = progresso
     ? ((progresso.arquivo - 1 + (progresso.totalPaginas ? progresso.pagina / progresso.totalPaginas : 0)) / progresso.totalArquivos) * 100
@@ -294,11 +310,52 @@ const AnalisarArquivosPage = () => {
               {resumo.comErro > 0 && ` · ${resumo.comErro} com erro`}
             </span>
             {!analisando && (
-              <Button variant="ghost" size="sm" onClick={limparResultados}>Limpar resultados</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="ghost" size="sm" onClick={limparResultados}>Limpar resultados</Button>
+                <Button size="sm" disabled={resumo.folhas === 0} onClick={() => { setCor(null); setCopias('1'); setEnvioAberto(true); }}>
+                  <FileSignature className="h-4 w-4 mr-2" /> Enviar para orçamento
+                </Button>
+              </div>
             )}
           </div>
         </div>
       )}
+
+      <Dialog open={envioAberto} onOpenChange={setEnvioAberto}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enviar para orçamento</DialogTitle>
+            <DialogDescription>
+              {resumo.folhas} {resumo.folhas === 1 ? 'folha' : 'folhas'} viram itens do orçamento. Os que não tiverem valor na tabela ficam para preencher à mão.
+            </DialogDescription>
+          </DialogHeader>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-foreground">A impressão vai ser</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {(['Color', 'PB'] as const).map(c => (
+                <label
+                  key={c}
+                  className={cn(
+                    'flex min-h-[44px] cursor-pointer items-center gap-2 rounded-md border px-3 text-sm',
+                    cor === c ? 'border-primary bg-primary/5 font-medium' : 'border-border',
+                  )}
+                >
+                  <input type="radio" name="cor-impressao" value={c} checked={cor === c} onChange={() => setCor(c)} className="h-4 w-4 accent-primary" />
+                  {NOME_COR[c]}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label className="flex items-center gap-3 text-sm text-foreground">
+            Cópias de cada folha
+            <Input type="number" inputMode="numeric" min={1} step={1} value={copias} onChange={e => setCopias(e.target.value)} className="h-9 w-20 text-base" />
+          </label>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEnvioAberto(false)}>Cancelar</Button>
+            <Button disabled={!cor} onClick={enviarParaOrcamento}>Abrir orçamento</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

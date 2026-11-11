@@ -11,6 +11,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import type { LinhaRecibo } from '@/types/recibos';
 import { generateReciboPdf, buildReciboFileName } from '@/lib/reciboPdf';
+import { guardarOrcamento, listarOrcamentos, type OrcamentoGuardado } from '@/lib/orcamentosRecentes';
+import { acharServico, NOME_COR, type ImportacaoAnalise, type ServicoDaTabela } from '@/lib/analiseArquivos/paraOrcamento';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { History, Download } from 'lucide-react';
 import { hojeBR } from '@/lib/dataLocal';
 import { formatarDocumento, formatarTelefone } from '@/lib/documento';
 import { cn } from '@/lib/utils';
@@ -55,6 +59,10 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   const [discountType, setDiscountType] = useState<'percent' | 'value'>('percent');
   const [discountInput, setDiscountInput] = useState<string>('');
   const demandaIdRef = useRef<string | null>(null);
+  // Orçamento: itens vindos de Analisar arquivos e os últimos orçamentos gerados.
+  const [importacao, setImportacao] = useState<ImportacaoAnalise | null>(null);
+  const [recentes, setRecentes] = useState<OrcamentoGuardado[]>(() => (modo === 'orcamento' ? listarOrcamentos() : []));
+  const [recentesAbertos, setRecentesAbertos] = useState(false);
 
   // Auto-fill client from demandas navigation
   useEffect(() => {
@@ -194,6 +202,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
       const line = { ...next[idx] };
       if (field === 'serviceCode') {
         const val = value as string;
+        delete line.importKey; // escolhida à mão: não é mais refeita pela análise
         if (val.startsWith('CS:')) {
           const csCode = val.slice(3);
           const cs = clientSpecificServices.find(s => s.code === csCode);
@@ -278,6 +287,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     setClienteId(''); setClienteAvulso(''); setClienteSearch(''); setSolicitanteId(''); setObraId('');
     setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(tipoCliente === 'avulso'); setFormaPagamento(''); setObraAvulsa(''); setAvulsoTelefone(''); setAvulsoDocumento('');
     setHasDiscount(false); setDiscountInput(''); setDiscountType('percent');
+    setImportacao(null);
   };
 
   const clienteDoRecibo = (r: typeof lastRecibo) => {
@@ -323,7 +333,9 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
         ? `Desconto (${parseFloat(discountInput.replace(',', '.')) || 0}%):`
         : 'Desconto:',
     };
-    return { pdf: await generateReciboPdf(doc, ctx), nome: buildReciboFileName(doc, ctx) };
+    const pdf = await generateReciboPdf(doc, ctx);
+    setRecentes(guardarOrcamento({ doc, cliente: ctx.cliente, solicitante: ctx.solicitante, obra: ctx.obra, descontoLabel: ctx.descontoLabel }));
+    return { pdf, nome: buildReciboFileName(doc, ctx) };
   };
 
   const handleOrcamentoExport = async () => {
@@ -374,11 +386,58 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     if (saved) return;
     const permitidos = new Set(servicoOptions.map(o => o.value));
     setLines(prev => {
-      const invalida = (l: LinhaRecibo) => l.serviceCode && l.serviceCode !== 'ENTREGA' && !permitidos.has(l.serviceCode);
+      const invalida = (l: LinhaRecibo) => l.serviceCode && l.serviceCode !== 'ENTREGA' && !l.importKey && !permitidos.has(l.serviceCode);
       if (!prev.some(invalida)) return prev;
       return prev.map(l => invalida(l) ? { serviceCode: '', description: '', quantity: 0, unitPrice: 0, total: 0 } : l);
     });
   }, [servicoOptions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Itens enviados pela tela Analisar arquivos.
+  useEffect(() => {
+    const st = location.state as { importacaoAnalise?: ImportacaoAnalise } | null;
+    if (!orcamento || !st?.importacaoAnalise) return;
+    setImportacao(st.importacaoAnalise);
+    window.history.replaceState({}, document.title);
+  }, [location.state, orcamento]);
+
+  // Monta as linhas da análise com a tabela que vale para o cliente escolhido
+  // (a dele, se tiver, ou a comum). Refaz quando o cliente muda, mantendo
+  // quantidade, prazo e valores digitados à mão.
+  useEffect(() => {
+    if (!importacao) return;
+    const tabela: ServicoDaTabela[] = clientSpecificServices.length > 0
+      ? clientSpecificServices.map(cs => ({ value: `CS:${cs.code}`, description: cs.description, unitPrice: cs.unitPrice }))
+      : servicos.map(sv => ({ value: sv.code, description: sv.description, unitPrice: sv.unitPrice }));
+    setLines(prev => {
+      const anteriores = new Map(prev.filter(l => l.importKey).map(l => [l.importKey as string, l]));
+      const novas: LinhaRecibo[] = importacao.itens.map(item => {
+        const antes = anteriores.get(item.chave);
+        const quantity = antes?.quantity ?? item.quantidade;
+        const svc = item.motivoManual ? null : acharServico(item.nomeTabela, importacao.cor, tabela);
+        if (svc) {
+          return { serviceCode: svc.value, description: svc.description, quantity, unitPrice: svc.unitPrice,
+            total: quantity * svc.unitPrice, prazoDiasUteis: antes?.prazoDiasUteis, importKey: item.chave };
+        }
+        // Sem valor na tabela: entra como serviço personalizado para digitar o valor.
+        const manualAntes = antes?.serviceCode === CODIGO_PERSONALIZADO ? antes : undefined;
+        const description = manualAntes?.description
+          ?? `${item.nomeTabela} ${importacao.cor}${item.motivoManual ? ` — ${item.motivoManual}` : ''}`;
+        const unitPrice = manualAntes?.unitPrice ?? 0;
+        return { serviceCode: CODIGO_PERSONALIZADO, description, quantity, unitPrice, total: quantity * unitPrice,
+          prazoDiasUteis: antes?.prazoDiasUteis, importKey: item.chave };
+      });
+      const resto = prev.filter(l => !l.importKey && l.serviceCode);
+      const result = [...novas, ...resto];
+      while (result.length < 10) result.push({ serviceCode: '', description: '', quantity: 0, unitPrice: 0, total: 0 });
+      return result;
+    });
+  }, [importacao, clientSpecificServices, servicos]);
+
+  const baixarGuardado = async (o: OrcamentoGuardado) => {
+    const ctx = { cliente: o.cliente, solicitante: o.solicitante, obra: o.obra, empresaInfo, tipo: 'orcamento' as const, descontoLabel: o.descontoLabel };
+    const pdf = await generateReciboPdf(o.doc, ctx);
+    pdf.save(buildReciboFileName(o.doc, ctx));
+  };
 
   if (loading) {
     return (
@@ -404,7 +463,54 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
             </span>
           </div>
         </div>
+        {orcamento && (
+          <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0" onClick={() => { setRecentes(listarOrcamentos()); setRecentesAbertos(true); }}>
+            <History className="h-4 w-4 mr-2" /> Últimos orçamentos{recentes.length > 0 && ` (${recentes.length})`}
+          </Button>
+        )}
       </div>
+
+      {orcamento && importacao && (
+        <div role="status" className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-foreground">
+          Itens da análise de arquivos: {NOME_COR[importacao.cor].toLowerCase()}, {importacao.copias} {importacao.copias === 1 ? 'cópia' : 'cópias'}.
+          {lines.some(l => l.importKey && l.serviceCode === CODIGO_PERSONALIZADO) && ' Os itens sem valor na tabela entraram como serviço personalizado (código 0): preencha o valor.'}
+        </div>
+      )}
+
+      {orcamento && (
+        <Dialog open={recentesAbertos} onOpenChange={setRecentesAbertos}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Últimos orçamentos</DialogTitle>
+              <DialogDescription>Os 5 últimos orçamentos exportados ou impressos neste computador.</DialogDescription>
+            </DialogHeader>
+            {recentes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum orçamento gerado ainda.</p>
+            ) : (
+              <ul className="divide-y divide-border rounded-md border border-border">
+                {recentes.map(o => {
+                  const quando = new Date(o.geradoEm);
+                  return (
+                    <li key={o.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div className="min-w-0 text-sm">
+                        <p className="truncate font-medium text-foreground">{o.cliente?.name || o.doc.clienteAvulso || 'Cliente avulso'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {quando.toLocaleDateString('pt-BR')} {quando.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          {' · '}{o.doc.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          {o.obra?.name ? ` · ${o.obra.name}` : ''}
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" className="shrink-0" onClick={() => baixarGuardado(o)}>
+                        <Download className="h-4 w-4 mr-1" /> Baixar
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
 
       <fieldset className="flex flex-wrap items-center gap-4 border rounded-md px-3 py-2" disabled={saved}>
         <legend className="sr-only">Tipo de recibo</legend>
@@ -588,7 +694,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
                         step={1}
                         value={line.prazoDiasUteis ?? ''}
                         onChange={e => updateLine(idx, 'prazoDiasUteis', e.target.value)}
-                        placeholder="0"
+                        placeholder="–"
                         aria-label={`Prazo do item ${idx + 1} em dias úteis`}
                         className="h-7 w-16 text-base"
                       />

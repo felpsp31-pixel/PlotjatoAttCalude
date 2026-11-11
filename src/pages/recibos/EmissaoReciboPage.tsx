@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import type { LinhaRecibo } from '@/types/recibos';
 import { generateReciboPdf, buildReciboFileName } from '@/lib/reciboPdf';
 import { hojeBR } from '@/lib/dataLocal';
+import { formatarDocumento, formatarTelefone } from '@/lib/documento';
 
 const formatDate = (date: string) => {
   if (!date) return '—';
@@ -33,6 +34,11 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   const { clientes, solicitantes, obras, servicos, clientServices, recibos, addRecibo, empresaInfo, loading } = useRecibos();
   const [clienteId, setClienteId] = useState('');
   const [clienteAvulso, setClienteAvulso] = useState('');
+  // 'faturado': empresa cadastrada, entra no fechamento do mes.
+  // 'avulso': paga na hora, nao gera lancamento a receber.
+  const [tipoCliente, setTipoCliente] = useState<'faturado' | 'avulso'>('faturado');
+  const [avulsoTelefone, setAvulsoTelefone] = useState('');
+  const [avulsoDocumento, setAvulsoDocumento] = useState('');
   const [clienteSearch, setClienteSearch] = useState('');
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [solicitanteId, setSolicitanteId] = useState('');
@@ -59,9 +65,11 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
       setClienteSearch(state.clienteNome);
       setClienteAvulso('');
       setIsPago(false);
+      setTipoCliente('faturado');
       if (state.obraId) setObraId(state.obraId);
       if (state.solicitanteId) setSolicitanteId(state.solicitanteId);
     } else {
+      setTipoCliente('avulso');
       setClienteId('');
       setClienteAvulso(state.clienteNome);
       setClienteSearch(state.clienteNome);
@@ -69,6 +77,20 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     }
     window.history.replaceState({}, document.title);
   }, [location.state]);
+
+  const trocarTipoCliente = (novo: 'faturado' | 'avulso') => {
+    if (saved || novo === tipoCliente) return;
+    setTipoCliente(novo);
+    setClienteId('');
+    setClienteAvulso('');
+    setClienteSearch('');
+    setSolicitanteId('');
+    setAvulsoTelefone('');
+    setAvulsoDocumento('');
+    // Avulso paga na hora; faturado entra no fechamento do mes.
+    setIsPago(novo === 'avulso');
+    if (novo === 'faturado') setFormaPagamento('');
+  };
 
   const filteredClienteOptions = useMemo(() => {
     if (!clienteSearch.trim()) return clientes;
@@ -205,7 +227,8 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
 
   // Valida o formulario e devolve linhas e total; null (com aviso) se faltar algo.
   const montarDocumento = () => {
-    if (!clienteId && !clienteAvulso.trim()) { toast.error('Selecione ou digite um cliente.'); return null; }
+    if (tipoCliente === 'faturado' && !clienteId) { toast.error('Selecione um cliente cadastrado ou mude para Avulso.'); return null; }
+    if (tipoCliente === 'avulso' && !clienteAvulso.trim()) { toast.error('Digite o nome do cliente avulso.'); return null; }
     const validLines = lines.filter(l => l.serviceCode && l.quantity > 0);
     if (validLines.length === 0) { toast.error('Adicione ao menos um serviço.'); return null; }
     const personalizadaIncompleta = validLines.find(l => l.serviceCode === CODIGO_PERSONALIZADO && (!l.description.trim() || l.unitPrice <= 0));
@@ -226,6 +249,8 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
       date: hojeBR(),
       isPago, formaPagamento: isPago ? formaPagamento : undefined,
       obraAvulsa: obraId ? undefined : obraAvulsa.trim() || undefined,
+      clienteAvulsoTelefone: tipoCliente === 'avulso' ? avulsoTelefone.trim() || undefined : undefined,
+      clienteAvulsoDocumento: tipoCliente === 'avulso' ? avulsoDocumento.trim() || undefined : undefined,
       clienteId: clienteId || '',
       clienteAvulso: clienteId ? undefined : clienteAvulso.trim(),
       solicitanteId, obraId,
@@ -247,12 +272,18 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
 
   const handleNew = () => {
     setClienteId(''); setClienteAvulso(''); setClienteSearch(''); setSolicitanteId(''); setObraId('');
-    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(false); setFormaPagamento(''); setObraAvulsa('');
+    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(tipoCliente === 'avulso'); setFormaPagamento(''); setObraAvulsa(''); setAvulsoTelefone(''); setAvulsoDocumento('');
     setHasDiscount(false); setDiscountInput(''); setDiscountType('percent');
   };
 
+  const clienteDoRecibo = (r: typeof lastRecibo) => {
+    const cadastrado = clientes.find(c => c.id === r?.clienteId);
+    if (cadastrado || !r?.clienteAvulso) return cadastrado;
+    return { id: '', name: r.clienteAvulso, cnpj: r.clienteAvulsoDocumento ?? '', phone: r.clienteAvulsoTelefone ?? '', email: '' };
+  };
+
   const pdfContext = () => ({
-    cliente: clientes.find(c => c.id === lastRecibo?.clienteId),
+    cliente: clienteDoRecibo(lastRecibo),
     solicitante: solicitantes.find(s => s.id === lastRecibo?.solicitanteId),
     obra: obras.find(o => o.id === lastRecibo?.obraId) ?? (lastRecibo?.obraAvulsa ? { name: lastRecibo.obraAvulsa } : undefined),
     empresaInfo,
@@ -270,11 +301,16 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     const doc = {
       id: 'orcamento', number: '', date: hojeBR(),
       clienteId: clienteId || '', clienteAvulso: clienteId ? undefined : clienteAvulso.trim(),
+      clienteAvulsoTelefone: avulsoTelefone.trim() || undefined,
+      clienteAvulsoDocumento: avulsoDocumento.trim() || undefined,
       solicitanteId, obraId, obraAvulsa: obraId ? undefined : obraAvulsa.trim() || undefined,
       lines: montado.validLines, total: montado.total,
     };
     const ctx = {
-      cliente: clientes.find(c => c.id === clienteId),
+      cliente: clientes.find(c => c.id === clienteId)
+        ?? (clienteAvulso.trim()
+          ? { id: '', name: clienteAvulso.trim(), cnpj: avulsoDocumento.trim(), phone: avulsoTelefone.trim(), email: '' }
+          : undefined),
       solicitante: solicitantes.find(s => s.id === solicitanteId),
       obra: obras.find(o => o.id === obraId) ?? (obraAvulsa.trim() ? { name: obraAvulsa.trim() } : undefined),
       empresaInfo,
@@ -366,57 +402,126 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
         </div>
       </div>
 
+      <fieldset className="flex flex-wrap items-center gap-4 border rounded-md px-3 py-2" disabled={saved}>
+        <legend className="sr-only">Tipo de recibo</legend>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="radio"
+            name="tipo-recibo"
+            value="faturado"
+            checked={tipoCliente === 'faturado'}
+            onChange={() => trocarTipoCliente('faturado')}
+            className="h-4 w-4 accent-primary"
+          />
+          <span className="font-medium">Faturado</span>
+          <span className="text-xs text-muted-foreground">cliente cadastrado, entra no fechamento do mês</span>
+        </label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="radio"
+            name="tipo-recibo"
+            value="avulso"
+            checked={tipoCliente === 'avulso'}
+            onChange={() => trocarTipoCliente('avulso')}
+            className="h-4 w-4 accent-primary"
+          />
+          <span className="font-medium">Avulso</span>
+          <span className="text-xs text-muted-foreground">paga na hora, não gera cobrança</span>
+        </label>
+      </fieldset>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="relative">
-          <label className="text-xs font-medium text-foreground">Cliente</label>
-          <Input
-            placeholder="Buscar ou digitar cliente avulso..."
-            value={clienteSearch}
-            onChange={e => {
-              setClienteSearch(e.target.value);
-              setClientDropdownOpen(true);
-              // If typed text doesn't match a selected client, treat as avulso
-              setClienteAvulso(e.target.value);
-              setClienteId('');
-              setSolicitanteId('');
-              setObraId('');
-            }}
-            onFocus={() => setClientDropdownOpen(true)}
-            onBlur={() => setTimeout(() => setClientDropdownOpen(false), 200)}
-            disabled={saved}
-            className="h-7 text-xs"
-          />
-          {clientDropdownOpen && clienteSearch.trim() && !saved && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto">
-              {filteredClienteOptions.map(c => (
-                <button
-                  key={c.id}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
-                  onMouseDown={e => e.preventDefault()}
-                  onClick={() => {
-                    setClienteId(c.id);
-                    setClienteAvulso('');
-                    setClienteSearch(c.name);
-                    setClientDropdownOpen(false);
-                    setSolicitanteId('');
-                    setObraId('');
-                  }}
-                >
-                  {c.name}
-                </button>
-              ))}
-              {filteredClienteOptions.length === 0 && (
-                <div className="px-3 py-1.5 text-xs text-muted-foreground">
-                  Usar "{clienteSearch}" como avulso
+          <label className="text-xs font-medium text-foreground" htmlFor="campo-cliente">Cliente</label>
+          {tipoCliente === 'faturado' ? (
+            <>
+              <Input
+                id="campo-cliente"
+                placeholder="Buscar cliente cadastrado..."
+                value={clienteSearch}
+                onChange={e => {
+                  setClienteSearch(e.target.value);
+                  setClientDropdownOpen(true);
+                  setClienteId('');
+                  setSolicitanteId('');
+                  setObraId('');
+                }}
+                onFocus={() => setClientDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setClientDropdownOpen(false), 200)}
+                disabled={saved}
+                className="h-7 text-xs"
+              />
+              {clientDropdownOpen && clienteSearch.trim() && !saved && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto">
+                  {filteredClienteOptions.map(c => (
+                    <button
+                      key={c.id}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        setClienteId(c.id);
+                        setClienteSearch(c.name);
+                        setClientDropdownOpen(false);
+                        setSolicitanteId('');
+                        setObraId('');
+                      }}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                  {filteredClienteOptions.length === 0 && (
+                    <div className="px-3 py-1.5 text-xs text-muted-foreground">
+                      Nenhum cliente com esse nome. Para atender sem cadastro, marque Avulso.
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
+          ) : (
+            <Input
+              id="campo-cliente"
+              placeholder="Nome de quem está pagando"
+              value={clienteAvulso}
+              onChange={e => { setClienteAvulso(e.target.value); setClienteSearch(e.target.value); }}
+              disabled={saved}
+              className="h-7 text-xs"
+            />
           )}
         </div>
+        {tipoCliente === 'avulso' && (
+          <>
+            <div>
+              <label className="text-xs font-medium text-foreground" htmlFor="campo-telefone">Telefone</label>
+              <Input
+                id="campo-telefone"
+                inputMode="tel"
+                placeholder="(31) 99999-9999"
+                value={avulsoTelefone}
+                onChange={e => setAvulsoTelefone(formatarTelefone(e.target.value))}
+                disabled={saved}
+                className="h-7 text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-foreground" htmlFor="campo-documento">CPF / CNPJ</label>
+              <Input
+                id="campo-documento"
+                inputMode="numeric"
+                placeholder="000.000.000-00"
+                value={avulsoDocumento}
+                onChange={e => setAvulsoDocumento(formatarDocumento(e.target.value))}
+                disabled={saved}
+                className="h-7 text-xs"
+              />
+            </div>
+          </>
+        )}
+        {tipoCliente === 'faturado' && (
         <div>
           <label className="text-xs font-medium text-foreground">Solicitante</label>
           <Combobox options={filteredSolicitantes.map(s => ({ value: s.id, label: s.name }))} value={solicitanteId} onValueChange={setSolicitanteId} placeholder="Selecione" disabled={saved || !clienteId} />
         </div>
+        )}
         <div>
           <label className="text-xs font-medium text-foreground">Obra</label>
           <Combobox

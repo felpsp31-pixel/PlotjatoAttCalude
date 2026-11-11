@@ -128,6 +128,8 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
           setRecibos((recRes.data || []).map((r) => ({
             id: r.id, number: r.number, date: r.date,
             clienteId: r.cliente_id, clienteAvulso: r.cliente_avulso || undefined,
+            clienteAvulsoTelefone: r.cliente_avulso_telefone || undefined,
+            clienteAvulsoDocumento: r.cliente_avulso_documento || undefined,
             solicitanteId: r.solicitante_id || '',
             obraId: r.obra_id || '',
             obraAvulsa: r.obra_avulsa || undefined,
@@ -392,6 +394,8 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
         id, number, date: r.date,
         cliente_id: r.clienteId || null,
         cliente_avulso: r.clienteAvulso || null,
+        cliente_avulso_telefone: r.clienteAvulsoTelefone || null,
+        cliente_avulso_documento: r.clienteAvulsoDocumento || null,
         solicitante_id: r.solicitanteId || null,
         obra_id: r.obraId || null,
         obra_avulsa: r.obraId ? null : r.obraAvulsa || null,
@@ -405,7 +409,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
         const salvo: Recibo = { ...r, id, number };
         setRecibos(p => [...p, salvo]);
         if (r.clienteAvulso && !r.clienteId) {
-          supabase.from('clientes_avulsos').insert([{ name: r.clienteAvulso }]).then(({ error: e }) => {
+          supabase.from('clientes_avulsos').insert([{ name: r.clienteAvulso, phone: r.clienteAvulsoTelefone || '', documento: r.clienteAvulsoDocumento || null }]).then(({ error: e }) => {
             if (e) console.error('Error saving avulso client:', e);
           });
         }

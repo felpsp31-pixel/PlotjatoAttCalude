@@ -51,6 +51,9 @@ export interface Recibo {
   date: string;
   clienteId: string;
   clienteAvulso?: string;
+  /** Contato do avulso, guardado no recibo para a reimpressao sair igual. */
+  clienteAvulsoTelefone?: string;
+  clienteAvulsoDocumento?: string;
   solicitanteId: string;
   obraId: string;
   /** Obra digitada na hora, quando nao ha cadastro. */

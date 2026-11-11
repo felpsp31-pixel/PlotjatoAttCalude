@@ -19,7 +19,10 @@ const DashboardReciboPage = () => {
 
   const downloadPdf = async (r: typeof recibos[0]) => {
     const ctx = {
-      cliente: clientes.find(c => c.id === r.clienteId),
+      cliente: clientes.find(c => c.id === r.clienteId)
+        ?? (r.clienteAvulso
+          ? { id: '', name: r.clienteAvulso, cnpj: r.clienteAvulsoDocumento ?? '', phone: r.clienteAvulsoTelefone ?? '', email: '' }
+          : undefined),
       solicitante: solicitantes.find(s => s.id === r.solicitanteId),
       obra: obras.find(o => o.id === r.obraId) ?? (r.obraAvulsa ? { name: r.obraAvulsa } : undefined),
       empresaInfo,

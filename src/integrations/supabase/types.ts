@@ -119,6 +119,7 @@ export type Database = {
       clientes_avulsos: {
         Row: {
           created_at: string
+          documento: string | null
           email: string
           id: string
           name: string
@@ -126,6 +127,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          documento?: string | null
           email?: string
           id?: string
           name: string
@@ -133,6 +135,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          documento?: string | null
           email?: string
           id?: string
           name?: string
@@ -510,6 +513,8 @@ export type Database = {
       recibos: {
         Row: {
           cliente_avulso: string | null
+          cliente_avulso_documento: string | null
+          cliente_avulso_telefone: string | null
           cliente_id: string | null
           created_at: string
           date: string
@@ -525,6 +530,8 @@ export type Database = {
         }
         Insert: {
           cliente_avulso?: string | null
+          cliente_avulso_documento?: string | null
+          cliente_avulso_telefone?: string | null
           cliente_id?: string | null
           created_at?: string
           date?: string
@@ -540,6 +547,8 @@ export type Database = {
         }
         Update: {
           cliente_avulso?: string | null
+          cliente_avulso_documento?: string | null
+          cliente_avulso_telefone?: string | null
           cliente_id?: string | null
           created_at?: string
           date?: string

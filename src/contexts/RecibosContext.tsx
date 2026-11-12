@@ -33,7 +33,7 @@ interface RecibosContextType {
   deleteServico: (id: string) => void;
   clientServices: ClientService[];
   addClientService: (s: Omit<ClientService, 'id'>) => Promise<boolean>;
-  updateClientService: (id: string, s: Partial<ClientService>) => void;
+  updateClientService: (id: string, s: Partial<ClientService>) => Promise<boolean>;
   deleteClientService: (id: string) => void;
   recibos: Recibo[];
   addRecibo: (r: Omit<Recibo, 'id' | 'number'>) => Promise<Recibo | null>;
@@ -118,6 +118,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
         setClientServices((csRes.data || []).map((r) => ({
           id: r.id, clienteId: r.cliente_id, code: r.code,
           description: r.description, unitPrice: Number(r.unit_price),
+          servicoId: r.servico_id ?? undefined,
         })));
 
         // Release the loading state as soon as light data is available.
@@ -364,24 +365,31 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
   const addClientService = useCallback(async (s: Omit<ClientService, 'id'>) => {
     const { data, error } = await supabase.from('client_services').insert([{
       cliente_id: s.clienteId, code: s.code, description: s.description, unit_price: s.unitPrice,
+      servico_id: s.servicoId || null,
     }]).select().single();
     if (error || !data) {
       toast.error(error?.code === '23505' ? `O código ${s.code} já está em uso neste cliente.` : 'Erro ao salvar o serviço.');
       return false;
     }
     const d = data;
-    setClientServices(p => [...p, { id: d.id, clienteId: d.cliente_id, code: d.code, description: d.description, unitPrice: Number(d.unit_price) }]);
+    setClientServices(p => [...p, { id: d.id, clienteId: d.cliente_id, code: d.code, description: d.description, unitPrice: Number(d.unit_price), servicoId: d.servico_id ?? undefined }]);
     return true;
   }, []);
 
   const updateClientService = useCallback(async (id: string, s: Partial<ClientService>) => {
-    setClientServices(p => p.map(x => x.id === id ? { ...x, ...s } : x));
     const dbData: Record<string, unknown> = {};
     if (s.code !== undefined) dbData.code = s.code;
     if (s.description !== undefined) dbData.description = s.description;
     if (s.unitPrice !== undefined) dbData.unit_price = s.unitPrice;
     if (s.clienteId !== undefined) dbData.cliente_id = s.clienteId;
-    await supabase.from('client_services').update(dbData as TablesUpdate<'client_services'>).eq('id', id);
+    if (s.servicoId !== undefined) dbData.servico_id = s.servicoId || null;
+    const { error } = await supabase.from('client_services').update(dbData as TablesUpdate<'client_services'>).eq('id', id);
+    if (error) {
+      toast.error(error.code === '23505' ? 'Este cliente já tem um preço especial para esse serviço.' : 'Erro ao atualizar o serviço.');
+      return false;
+    }
+    setClientServices(p => p.map(x => x.id === id ? { ...x, ...s } : x));
+    return true;
   }, []);
 
   const deleteClientService = useCallback(async (id: string) => {

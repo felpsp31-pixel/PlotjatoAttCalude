@@ -16,6 +16,7 @@ import { acharServico, NOME_COR, type ImportacaoAnalise, type ServicoDaTabela } 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { History, Download } from 'lucide-react';
 import { hojeBR } from '@/lib/dataLocal';
+import { montarTabelaDoCliente } from '@/lib/tabelaServicos';
 import { formatarDocumento, formatarTelefone } from '@/lib/documento';
 import { cn } from '@/lib/utils';
 
@@ -203,19 +204,13 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
       if (field === 'serviceCode') {
         const val = value as string;
         delete line.importKey; // escolhida à mão: não é mais refeita pela análise
-        if (val.startsWith('CS:')) {
-          const csCode = val.slice(3);
-          const cs = clientSpecificServices.find(s => s.code === csCode);
-          line.serviceCode = val;
-          line.description = cs?.description ?? '';
-          line.unitPrice = cs?.unitPrice ?? 0;
-        } else if (val === CODIGO_PERSONALIZADO) {
+        if (val === CODIGO_PERSONALIZADO) {
           // Fora do padrao: descricao e valor digitados na propria linha.
           line.serviceCode = val;
           line.description = '';
           line.unitPrice = 0;
         } else {
-          const svc = servicos.find(s => s.code === val);
+          const svc = tabelaDoCliente.find(t => t.value === val);
           line.serviceCode = val;
           line.description = svc?.description ?? '';
           line.unitPrice = svc?.unitPrice ?? 0;
@@ -370,15 +365,17 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   const clientSpecificServices = useMemo(() =>
     clientServices.filter(cs => cs.clienteId === clienteId), [clientServices, clienteId]);
 
-  // Cliente com tabela propria ve so os valores dele; os demais veem a tabela
-  // comum. O codigo 0 aparece sempre, para servicos fora do padrao.
-  const servicoOptions = useMemo(() => {
-    const personalizado = { value: CODIGO_PERSONALIZADO, label: '0 - Serviço personalizado' };
-    if (clientSpecificServices.length > 0) {
-      return [personalizado, ...clientSpecificServices.map(cs => ({ value: `CS:${cs.code}`, label: `★ ${cs.code} - ${cs.description}` }))];
-    }
-    return [personalizado, ...servicos.map(s => ({ value: s.code, label: `${s.code} - ${s.description}` }))];
-  }, [servicos, clientSpecificServices]);
+  // A tabela que vale para este cliente (ver montarTabelaDoCliente).
+  const tabelaDoCliente = useMemo(
+    () => montarTabelaDoCliente(servicos, clientSpecificServices),
+    [servicos, clientSpecificServices],
+  );
+
+  // O código 0 aparece sempre, para serviços fora do padrão.
+  const servicoOptions = useMemo(() => [
+    { value: CODIGO_PERSONALIZADO, label: '0 - Serviço personalizado' },
+    ...tabelaDoCliente.map(t => ({ value: t.value, label: `${t.especial ? '★ ' : ''}${t.code} - ${t.description}` })),
+  ], [tabelaDoCliente]);
 
   // Ao trocar de cliente, limpa as linhas com codigos que ele nao pode usar
   // (ex.: valor comum escolhido antes de selecionar um cliente com tabela propria).
@@ -405,9 +402,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   // quantidade, prazo e valores digitados à mão.
   useEffect(() => {
     if (!importacao) return;
-    const tabela: ServicoDaTabela[] = clientSpecificServices.length > 0
-      ? clientSpecificServices.map(cs => ({ value: `CS:${cs.code}`, description: cs.description, unitPrice: cs.unitPrice }))
-      : servicos.map(sv => ({ value: sv.code, description: sv.description, unitPrice: sv.unitPrice }));
+    const tabela: ServicoDaTabela[] = tabelaDoCliente.map(t => ({ value: t.value, description: t.description, unitPrice: t.unitPrice }));
     setLines(prev => {
       const anteriores = new Map(prev.filter(l => l.importKey).map(l => [l.importKey as string, l]));
       const novas: LinhaRecibo[] = importacao.itens.map(item => {
@@ -431,7 +426,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
       while (result.length < 10) result.push({ serviceCode: '', description: '', quantity: 0, unitPrice: 0, total: 0 });
       return result;
     });
-  }, [importacao, clientSpecificServices, servicos]);
+  }, [importacao, tabelaDoCliente]);
 
   const baixarGuardado = async (o: OrcamentoGuardado) => {
     const ctx = { cliente: o.cliente, solicitante: o.solicitante, obra: o.obra, empresaInfo, tipo: 'orcamento' as const, descontoLabel: o.descontoLabel };

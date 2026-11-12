@@ -27,7 +27,9 @@ const getSession = () => {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const { expiresAt } = JSON.parse(raw);
-    if (Date.now() > expiresAt) {
+    // Sem internet não dá para entrar de novo, então a sessão vale até a
+    // conexão voltar (senão o balcão ficaria sem emitir recibo).
+    if (Date.now() > expiresAt && navigator.onLine !== false) {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
@@ -36,6 +38,19 @@ const getSession = () => {
     localStorage.removeItem(SESSION_KEY);
     return null;
   }
+};
+
+/** Usuário da última sessão guardada pelo Supabase, lida sem ir ao servidor. */
+const usuarioGuardado = (): { is_anonymous?: boolean; app_metadata?: { papel?: string } } | null => {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const chave = localStorage.key(i);
+      if (!chave || !/^sb-.+-auth-token$/.test(chave)) continue;
+      const salvo = JSON.parse(localStorage.getItem(chave) || 'null');
+      return salvo?.user ?? salvo?.currentSession?.user ?? null;
+    }
+  } catch { /* ignore */ }
+  return null;
 };
 
 const setSession = () => {
@@ -65,10 +80,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!raw) return;
       const { expiresAt } = JSON.parse(raw);
       const remaining = Number(expiresAt) - Date.now();
+      // Vencendo sem internet, só sai quando a conexão voltar.
+      const expirar = () => {
+        if (navigator.onLine === false) window.addEventListener('online', () => signOut(), { once: true });
+        else signOut();
+      };
       if (remaining <= 0) {
-        signOut();
+        expirar();
       } else {
-        timeoutRef.current = setTimeout(signOut, remaining);
+        timeoutRef.current = setTimeout(expirar, remaining);
       }
     } catch { /* ignore */ }
   }, [authenticated, signOut]);
@@ -80,12 +100,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       let valida = false;
       if (session) {
         try {
-          const { data } = await supabase.auth.getSession();
-          const user = data.session?.user;
-          valida = !!user && !user.is_anonymous && ['sistema', 'financeiro'].includes(user.app_metadata?.papel);
+          // Sem internet o Supabase fica até meio minuto tentando renovar o
+          // acesso antes de desistir. A sessão continua guardada e é renovada
+          // quando a conexão volta, então offline vale a guardada direto.
+          const offline = navigator.onLine === false;
+          const user = offline ? usuarioGuardado() : (await supabase.auth.getSession()).data.session?.user;
+          valida = !!user && !user.is_anonymous && ['sistema', 'financeiro'].includes(user.app_metadata?.papel ?? '');
           // Sessao do Financeiro que sobrou de uma aba fechada: tenta voltar para
           // a do sistema; se nao houver, pede a senha de acesso de novo.
-          if (valida && user.app_metadata?.papel === 'financeiro' && !sessionStorage.getItem('financial_auth')) {
+          if (valida && !offline && user?.app_metadata?.papel === 'financeiro' && !sessionStorage.getItem('financial_auth')) {
             valida = await sairFinanceiro();
           }
         } catch { /* ignore */ }

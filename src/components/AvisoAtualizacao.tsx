@@ -1,6 +1,7 @@
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAtualizacaoDisponivel } from '@/hooks/useAtualizacaoDisponivel';
+import { recarregarComVersaoNova } from '@/lib/modoOffline';
 
 /**
  * Faixa discreta avisando que saiu versão nova enquanto esta janela estava
@@ -21,7 +22,7 @@ const AvisoAtualizacao = () => {
     >
       <RefreshCw className="h-4 w-4 text-primary shrink-0" />
       <span className="text-sm">Nova versão disponível.</span>
-      <Button size="sm" onClick={() => window.location.reload()}>
+      <Button size="sm" onClick={() => recarregarComVersaoNova()}>
         Atualizar
       </Button>
     </div>

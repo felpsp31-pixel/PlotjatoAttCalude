@@ -52,13 +52,9 @@ export function faturamentoNoPeriodo(
     if (!r.date || r.date < p.inicio || r.date > p.fim) continue;
     out.total += r.total;
     out.quantidade++;
-    if (r.isPago) out.pago += r.total;
-    else if (r.valorSinal) {
-      // Sinal: parte já recebida, o resto ainda a receber.
-      const sinal = Math.min(r.valorSinal, r.total);
-      out.pago += sinal;
-      out.aReceber += r.total - sinal;
-    } else out.aReceber += r.total;
+    // Avulso com sinal conta como pago: não é cobrado no fechamento mensal.
+    if (r.isPago || (r.valorSinal ?? 0) > 0) out.pago += r.total;
+    else out.aReceber += r.total;
   }
   return out;
 }

@@ -13,6 +13,7 @@ import FinanceiroGuard from "@/components/FinanceiroGuard";
 // Eager-load light pages (login + home) for instant first paint
 import LoginPage from "./pages/LoginPage";
 import HomePage from "./pages/HomePage";
+import AvisoOffline from '@/components/AvisoOffline';
 import AvisoAtualizacao from '@/components/AvisoAtualizacao';
 import DestravarTela from '@/components/DestravarTela';
 
@@ -95,6 +96,7 @@ const App = () => (
         <RecibosProvider>
           <BrowserRouter>
             <DestravarTela />
+            <AvisoOffline />
             <Suspense fallback={<PageFallback />}>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />

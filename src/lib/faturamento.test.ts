@@ -36,11 +36,11 @@ describe('faturamentoNoPeriodo', () => {
 });
 
 describe('faturamentoNoPeriodo com sinal', () => {
-  it('divide o recibo entre recebido e a receber', () => {
+  it('conta o recibo com sinal inteiro como pago', () => {
     const f = faturamentoNoPeriodo(
       [{ date: '2026-11-10', total: 100, valorSinal: 30 }, { date: '2026-11-10', total: 50, isPago: true }],
       { inicio: '2026-11-01', fim: '2026-11-30' },
     );
-    expect(f).toMatchObject({ total: 150, pago: 80, aReceber: 70 });
+    expect(f).toMatchObject({ total: 150, pago: 150, aReceber: 0 });
   });
 });

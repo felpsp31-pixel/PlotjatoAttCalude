@@ -6,10 +6,12 @@ import { Lock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { prewarmValidatePassword } from '@/lib/prewarm';
+import { useConectado } from '@/hooks/useConectado';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, authenticated } = useAuth();
+  const conectado = useConectado();
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -111,6 +113,17 @@ const LoginPage = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-primary mt-3">Plotjato</h1>
           <p className="text-sm text-muted-foreground mt-1">Sistema de Gestão</p>
         </div>
+
+        {!conectado && (
+          <div className="mb-4 rounded-xl border border-amber-500/60 bg-card p-4 text-sm text-foreground space-y-3">
+            <p><strong>Sem internet.</strong> A senha só pode ser conferida com conexão.</p>
+            {authenticated ? (
+              <Button className="w-full" onClick={() => navigate('/recibos')}>Emitir recibo sem internet</Button>
+            ) : (
+              <p className="text-muted-foreground">Este aparelho não tem um acesso guardado. Conecte-se para entrar.</p>
+            )}
+          </div>
+        )}
 
         <div className="bg-card rounded-xl shadow-lg p-6 border border-border">
           <form onSubmit={handleSubmit} className="space-y-5">

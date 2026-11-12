@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { VitePWA } from "vite-plugin-pwa";
 
 // Identidade desta build. Na Vercel vem o commit; fora dela, o relógio.
 // O app compara este valor com o de /version.json para saber que saiu
@@ -34,7 +35,26 @@ export default defineConfig(() => ({
       overlay: false,
     },
   },
-  plugins: [react(), versionJson()],
+  plugins: [
+    react(),
+    versionJson(),
+    // Guarda o app no aparelho para abrir sem internet (emissão de recibo
+    // offline). Em modo "prompt" a versão nova só entra quando o usuário
+    // clica em Atualizar no aviso — nunca no meio de um recibo.
+    VitePWA({
+      registerType: "prompt",
+      injectRegister: false,
+      manifest: false, // usa o public/manifest.webmanifest que já existe
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
+        // O gerador de PDF passa de 500 KB e precisa funcionar offline.
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+        navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/^\/version\.json/],
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

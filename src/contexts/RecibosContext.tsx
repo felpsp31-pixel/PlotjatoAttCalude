@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json, TablesUpdate } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +12,11 @@ function lerFaixas(v: unknown): FaixaDesconto[] {
     .sort((a, b) => a.qtd - b.qtd);
 }
 import { toast } from 'sonner';
+import {
+  TAMANHO_BLOCO, REPOR_ABAIXO_DE, comTrava, guardarNumeros, lerCadastros, lerFila, linhaDoRecibo,
+  marcarErro, numerosDisponiveis, porNaFila, salvarCadastros, semInternet, tirarDaFila, tirarNumero,
+  type CadastrosOffline,
+} from '@/lib/offlineRecibos';
 
 interface MontanteCliente {
   clienteId: string;
@@ -48,6 +53,12 @@ interface RecibosContextType {
   deleteRecibo: (id: string) => void;
   montantePorCliente: MontanteCliente[];
   loading: boolean;
+  /** Recibos emitidos sem internet que ainda não subiram para o servidor. */
+  pendentesOffline: number;
+  /** Desses, quantos o banco recusou (precisam de atenção). */
+  pendentesComErro: number;
+  /** Envia agora a fila de recibos offline. */
+  sincronizarOffline: () => Promise<void>;
 }
 
 const RecibosContext = createContext<RecibosContextType>({} as RecibosContextType);
@@ -73,6 +84,50 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
   const [clientServices, setClientServices] = useState<ClientService[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendentesOffline, setPendentesOffline] = useState(() => lerFila().length);
+  const [pendentesComErro, setPendentesComErro] = useState(() => lerFila().filter(p => p.erro).length);
+  const atualizarContagem = useCallback(() => {
+    const fila = lerFila();
+    setPendentesOffline(fila.length);
+    setPendentesComErro(fila.filter(p => p.erro).length);
+  }, []);
+
+  // Põe na tela os cadastros (do servidor ou da cópia guardada).
+  const aplicarCadastros = (linhas: CadastrosOffline) => {
+    if (linhas.empresa) {
+      setEmpresaInfoState({
+        name: linhas.empresa.name, cnpj: linhas.empresa.cnpj, address: linhas.empresa.address,
+        phone: linhas.empresa.phone, email: linhas.empresa.email, logo: linhas.empresa.logo,
+      });
+    }
+
+    setClientes(linhas.clientes.map((r) => ({
+      id: r.id, name: r.name, cnpj: r.cnpj, phone: r.phone, email: r.email,
+    })));
+
+    setSolicitantes(linhas.solicitantes.map((r) => ({
+      id: r.id, clienteId: r.cliente_id, name: r.name, phone: r.phone,
+    })));
+
+    setObras(linhas.obras.map((r) => ({
+      id: r.id, clienteId: r.cliente_id, name: r.name,
+      hasDelivery: r.has_delivery ?? false,
+      deliveryValue: Number(r.delivery_value ?? 0),
+      exemptionValue: Number(r.exemption_value ?? 0),
+    })));
+
+    setServicos(linhas.servicos.map((r) => ({
+      id: r.id, code: r.code, description: r.description, unitPrice: Number(r.unit_price),
+      universal: r.universal,
+      descontoQtd: r.desconto_qtd,
+      faixas: lerFaixas(r.faixas_desconto),
+    })));
+
+    setClientServices(linhas.clientServices.map((r) => ({
+      id: r.id, clienteId: r.cliente_id, code: r.code,
+      description: r.description, unitPrice: Number(r.unit_price),
+    })));
+  };
 
   useEffect(() => {
     if (!authenticated) {
@@ -81,6 +136,15 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     }
     const fetchAll = async () => {
       setLoading(true);
+      // Sem internet nem tenta o servidor (esperaria a conexão expirar):
+      // abre direto com a cópia guardada no aparelho.
+      const copiaOffline = semInternet() ? lerCadastros() : null;
+      if (copiaOffline) {
+        aplicarCadastros(copiaOffline);
+        setRecibos(lerFila().map(p => p.recibo));
+        setLoading(false);
+        return;
+      }
       try {
         // Fast queries first — unlock the UI as soon as light data arrives.
         const fastPromise = Promise.all([
@@ -97,46 +161,28 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
 
         const [empRes, cliRes, solRes, obrRes, srvRes, csRes] = await fastPromise;
 
-        if (empRes.data) {
-          setEmpresaInfoState({
-            name: empRes.data.name, cnpj: empRes.data.cnpj, address: empRes.data.address,
-            phone: empRes.data.phone, email: empRes.data.email, logo: empRes.data.logo,
-          });
-        }
+        // Sem internet: usa a última cópia dos cadastros guardada no aparelho.
+        const falhou = [cliRes, solRes, obrRes, srvRes, csRes].find(r => r.error)?.error;
+        const copia = falhou ? lerCadastros() : null;
+        if (falhou && !copia) throw falhou;
+        const linhas: CadastrosOffline = copia ?? {
+          empresa: empRes.data ?? null,
+          clientes: cliRes.data ?? [],
+          solicitantes: solRes.data ?? [],
+          obras: obrRes.data ?? [],
+          servicos: srvRes.data ?? [],
+          clientServices: csRes.data ?? [],
+        };
+        if (!copia) salvarCadastros(linhas);
 
-        setClientes((cliRes.data || []).map((r) => ({
-          id: r.id, name: r.name, cnpj: r.cnpj, phone: r.phone, email: r.email,
-        })));
-
-        setSolicitantes((solRes.data || []).map((r) => ({
-          id: r.id, clienteId: r.cliente_id, name: r.name, phone: r.phone,
-        })));
-
-        setObras((obrRes.data || []).map((r) => ({
-          id: r.id, clienteId: r.cliente_id, name: r.name,
-          hasDelivery: r.has_delivery ?? false,
-          deliveryValue: Number(r.delivery_value ?? 0),
-          exemptionValue: Number(r.exemption_value ?? 0),
-        })));
-
-        setServicos((srvRes.data || []).map((r) => ({
-          id: r.id, code: r.code, description: r.description, unitPrice: Number(r.unit_price),
-          universal: r.universal,
-          descontoQtd: r.desconto_qtd,
-          faixas: lerFaixas(r.faixas_desconto),
-        })));
-
-        setClientServices((csRes.data || []).map((r) => ({
-          id: r.id, clienteId: r.cliente_id, code: r.code,
-          description: r.description, unitPrice: Number(r.unit_price),
-        })));
+        aplicarCadastros(linhas);
 
         // Release the loading state as soon as light data is available.
         setLoading(false);
 
         // Resolve recibos in background; UI updates when ready.
         recibosPromise.then(recRes => {
-          setRecibos((recRes.data || []).map((r) => ({
+          const doServidor: Recibo[] = (recRes.data || []).map((r) => ({
             id: r.id, number: r.number, date: r.date,
             clienteId: r.cliente_id, clienteAvulso: r.cliente_avulso || undefined,
             clienteAvulsoTelefone: r.cliente_avulso_telefone || undefined,
@@ -148,10 +194,14 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
             total: Number(r.total),
             isPago: r.is_pago, formaPagamento: r.forma_pagamento || undefined,
             valorSinal: r.valor_sinal != null ? Number(r.valor_sinal) : undefined,
-          })));
+          }));
+          // Os emitidos sem internet que ainda não subiram aparecem também.
+          const noServidor = new Set(doServidor.map(r => r.id));
+          const pendentes = lerFila().map(p => p.recibo).filter(r => !noServidor.has(r.id));
+          setRecibos([...pendentes, ...doServidor]);
         });
 
-        if ((cliRes.data || []).length === 0) {
+        if (!copia && linhas.clientes.length === 0) {
           migrateFromLocalStorage();
         }
       } catch (err) {
@@ -410,47 +460,57 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     await supabase.from('client_services').delete().eq('id', id);
   }, []);
 
-  // Salva o recibo e so devolve depois que o servidor confirmou, ja com o
-  // numero definitivo. Devolve null (com aviso) se nao conseguir salvar.
+  const registrarAvulso = (r: Pick<Recibo, 'clienteId' | 'clienteAvulso' | 'clienteAvulsoTelefone' | 'clienteAvulsoDocumento'>) => {
+    if (!r.clienteAvulso || r.clienteId) return;
+    supabase.from('clientes_avulsos').insert([{ name: r.clienteAvulso, phone: r.clienteAvulsoTelefone || '', documento: r.clienteAvulsoDocumento || null }]).then(({ error: e }) => {
+      if (e) console.error('Error saving avulso client:', e);
+    });
+  };
+
+  // Guarda o recibo no aparelho para subir quando a internet voltar.
+  const guardarOffline = useCallback(async (r: Omit<Recibo, 'id' | 'number'>, id: string, numero?: string): Promise<Recibo | null> => {
+    const number = numero ?? await comTrava('plotjato-numeros', () => tirarNumero());
+    if (!number) {
+      toast.error('Sem internet e sem números reservados neste aparelho. Emita um orçamento ou aguarde a conexão voltar.');
+      return null;
+    }
+    const salvo: Recibo = { ...r, id, number };
+    porNaFila(salvo);
+    setRecibos(p => [...p, salvo]);
+    atualizarContagem();
+    toast.info(`Sem internet: recibo ${number} guardado no aparelho. Ele será enviado quando a conexão voltar.`);
+    return salvo;
+  }, [atualizarContagem]);
+
+  // Com internet, salva e so devolve depois que o servidor confirmou, ja com
+  // o numero definitivo. Sem internet, usa o bloco reservado e entra na fila.
   const addRecibo = useCallback(async (r: Omit<Recibo, 'id' | 'number'>): Promise<Recibo | null> => {
     const id = crypto.randomUUID();
+    if (semInternet()) return guardarOffline(r, id);
 
     // Tenta 2 vezes, para o caso raro de colisao de numero.
     for (let attempt = 0; attempt < 2; attempt++) {
       const { data: numData, error: numErr } = await supabase.rpc('next_recibo_number');
       if (numErr || !numData) {
+        if (semInternet(numErr)) return guardarOffline(r, id);
         console.error('Error getting next recibo number:', numErr);
         toast.error('Erro ao gerar número do recibo. Verifique sua conexão.');
         return null;
       }
       const number = String(numData);
+      const salvo: Recibo = { ...r, id, number };
 
-      const { error } = await supabase.from('recibos').insert([{
-        id, number, date: r.date,
-        cliente_id: r.clienteId || null,
-        cliente_avulso: r.clienteAvulso || null,
-        cliente_avulso_telefone: r.clienteAvulsoTelefone || null,
-        cliente_avulso_documento: r.clienteAvulsoDocumento || null,
-        solicitante_id: r.solicitanteId || null,
-        obra_id: r.obraId || null,
-        obra_avulsa: r.obraId ? null : r.obraAvulsa || null,
-        lines: JSON.parse(JSON.stringify(r.lines)),
-        total: r.total,
-        is_pago: !!r.isPago,
-        forma_pagamento: r.isPago || r.valorSinal ? r.formaPagamento ?? null : null,
-        valor_sinal: r.isPago ? null : r.valorSinal ?? null,
-      }]);
+      const { error } = await supabase.from('recibos').insert([linhaDoRecibo(salvo)]);
 
       if (!error) {
-        const salvo: Recibo = { ...r, id, number };
         setRecibos(p => [...p, salvo]);
-        if (r.clienteAvulso && !r.clienteId) {
-          supabase.from('clientes_avulsos').insert([{ name: r.clienteAvulso, phone: r.clienteAvulsoTelefone || '', documento: r.clienteAvulsoDocumento || null }]).then(({ error: e }) => {
-            if (e) console.error('Error saving avulso client:', e);
-          });
-        }
+        registrarAvulso(r);
         return salvo;
       }
+
+      // A conexao caiu no meio: o numero ja e deste recibo. Vai para a fila
+      // com o mesmo id, entao nao duplica nem se o envio tiver chegado.
+      if (semInternet(error)) return guardarOffline(r, id, number);
 
       // 23505 = numero ja usado; tenta de novo com outro.
       if (error.code === '23505' && attempt === 0) continue;
@@ -460,7 +520,65 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
       return null;
     }
     return null;
-  }, []);
+  }, [guardarOffline]);
+
+  // Sobe a fila de recibos offline e repõe o bloco de números.
+  const sincronizando = useRef(false);
+  const sincronizarOffline = useCallback(async () => {
+    if (!authenticated || sincronizando.current || semInternet()) return;
+    sincronizando.current = true;
+    let enviados = 0;
+    try {
+      await comTrava('plotjato-fila', async () => {
+        for (const p of lerFila()) {
+          // ignoreDuplicates: se este recibo ja chegou antes, nao cria outro.
+          const { error } = await supabase.from('recibos')
+            .upsert([linhaDoRecibo(p.recibo)], { onConflict: 'id', ignoreDuplicates: true });
+          if (error) {
+            if (semInternet(error)) break;
+            console.error('Recibo offline recusado:', p.recibo.number, error);
+            marcarErro(p.recibo.id, error.message);
+            continue;
+          }
+          tirarDaFila(p.recibo.id);
+          registrarAvulso(p.recibo);
+          enviados++;
+        }
+      });
+
+      if (numerosDisponiveis().length < REPOR_ABAIXO_DE) {
+        await comTrava('plotjato-numeros', async () => {
+          if (numerosDisponiveis().length >= REPOR_ABAIXO_DE) return; // outra aba ja repos
+          const { data, error } = await supabase.rpc('reservar_numeros_recibo', { qtd: TAMANHO_BLOCO });
+          if (!error && Array.isArray(data)) guardarNumeros(data);
+          else if (error && !semInternet(error)) console.error('Erro ao reservar números offline:', error);
+        });
+      }
+    } finally {
+      sincronizando.current = false;
+      atualizarContagem();
+    }
+    if (enviados > 0) {
+      toast.success(enviados === 1 ? '1 recibo emitido sem internet foi enviado.' : `${enviados} recibos emitidos sem internet foram enviados.`);
+    }
+  }, [authenticated, atualizarContagem]);
+
+  // Envia ao entrar, quando a internet volta e de tempos em tempos.
+  useEffect(() => {
+    if (!authenticated) return;
+    sincronizarOffline();
+    const aoVoltar = () => { sincronizarOffline(); };
+    window.addEventListener('online', aoVoltar);
+    const timer = setInterval(sincronizarOffline, 60 * 1000);
+    // Outra aba mexeu na fila: atualiza o contador desta.
+    const aoMudar = (e: StorageEvent) => { if (e.key?.startsWith('plotjato:')) atualizarContagem(); };
+    window.addEventListener('storage', aoMudar);
+    return () => {
+      window.removeEventListener('online', aoVoltar);
+      window.removeEventListener('storage', aoMudar);
+      clearInterval(timer);
+    };
+  }, [authenticated, sincronizarOffline, atualizarContagem]);
 
   const deleteRecibo = useCallback(async (id: string) => {
     setRecibos(p => p.filter(x => x.id !== id));
@@ -478,6 +596,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
       recibos, addRecibo, deleteRecibo,
       montantePorCliente,
       loading,
+      pendentesOffline, pendentesComErro, sincronizarOffline,
     }}>
       {children}
     </RecibosContext.Provider>

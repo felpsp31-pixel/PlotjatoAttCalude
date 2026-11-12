@@ -726,6 +726,7 @@ export type Database = {
         Returns: Json
       }
       next_recibo_number: { Args: never; Returns: string }
+      reservar_numeros_recibo: { Args: { qtd?: number }; Returns: string[] }
     }
     Enums: {
       [_ in never]: never

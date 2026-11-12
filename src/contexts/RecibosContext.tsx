@@ -113,12 +113,12 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
 
         setServicos((srvRes.data || []).map((r) => ({
           id: r.id, code: r.code, description: r.description, unitPrice: Number(r.unit_price),
+          universal: r.universal,
         })));
 
         setClientServices((csRes.data || []).map((r) => ({
           id: r.id, clienteId: r.cliente_id, code: r.code,
           description: r.description, unitPrice: Number(r.unit_price),
-          servicoId: r.servico_id ?? undefined,
         })));
 
         // Release the loading state as soon as light data is available.
@@ -205,7 +205,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
           code: s.code || '', description: s.description || '', unit_price: s.unitPrice || 0,
         }));
         const { data } = await supabase.from('servicos').insert(rows).select();
-        if (data) setServicos(data.map(r => ({ id: r.id, code: r.code, description: r.description, unitPrice: Number(r.unit_price) })));
+        if (data) setServicos(data.map(r => ({ id: r.id, code: r.code, description: r.description, unitPrice: Number(r.unit_price), universal: r.universal })));
       }
 
       if (lsRecibos.length > 0) {
@@ -329,14 +329,14 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
 
   const addServico = useCallback(async (s: Omit<Servico, 'id'>) => {
     const { data, error } = await supabase.from('servicos').insert([{
-      code: s.code, description: s.description, unit_price: s.unitPrice,
+      code: s.code, description: s.description, unit_price: s.unitPrice, universal: s.universal ?? false,
     }]).select().single();
     if (error || !data) {
       // 23505 = o banco recusou um codigo que ja existe.
       toast.error(error?.code === '23505' ? `O código ${s.code} já está em uso.` : 'Erro ao salvar o serviço.');
       return false;
     }
-    setServicos(p => [...p, { id: data.id, code: data.code, description: data.description, unitPrice: Number(data.unit_price) }]);
+    setServicos(p => [...p, { id: data.id, code: data.code, description: data.description, unitPrice: Number(data.unit_price), universal: data.universal }]);
     return true;
   }, []);
 
@@ -345,6 +345,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     if (s.code !== undefined) dbData.code = s.code;
     if (s.description !== undefined) dbData.description = s.description;
     if (s.unitPrice !== undefined) dbData.unit_price = s.unitPrice;
+    if (s.universal !== undefined) dbData.universal = s.universal;
     // Grava primeiro e so entao muda a tela: um codigo repetido e recusado
     // pelo banco e a lista continua como estava.
     const { error } = await supabase.from('servicos').update(dbData).eq('id', id);
@@ -365,14 +366,13 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
   const addClientService = useCallback(async (s: Omit<ClientService, 'id'>) => {
     const { data, error } = await supabase.from('client_services').insert([{
       cliente_id: s.clienteId, code: s.code, description: s.description, unit_price: s.unitPrice,
-      servico_id: s.servicoId || null,
     }]).select().single();
     if (error || !data) {
       toast.error(error?.code === '23505' ? `O código ${s.code} já está em uso neste cliente.` : 'Erro ao salvar o serviço.');
       return false;
     }
     const d = data;
-    setClientServices(p => [...p, { id: d.id, clienteId: d.cliente_id, code: d.code, description: d.description, unitPrice: Number(d.unit_price), servicoId: d.servico_id ?? undefined }]);
+    setClientServices(p => [...p, { id: d.id, clienteId: d.cliente_id, code: d.code, description: d.description, unitPrice: Number(d.unit_price) }]);
     return true;
   }, []);
 
@@ -382,10 +382,9 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     if (s.description !== undefined) dbData.description = s.description;
     if (s.unitPrice !== undefined) dbData.unit_price = s.unitPrice;
     if (s.clienteId !== undefined) dbData.cliente_id = s.clienteId;
-    if (s.servicoId !== undefined) dbData.servico_id = s.servicoId || null;
     const { error } = await supabase.from('client_services').update(dbData as TablesUpdate<'client_services'>).eq('id', id);
     if (error) {
-      toast.error(error.code === '23505' ? 'Este cliente já tem um preço especial para esse serviço.' : 'Erro ao atualizar o serviço.');
+      toast.error(error.code === '23505' ? `O código ${s.code} já está em uso neste cliente.` : 'Erro ao atualizar o serviço.');
       return false;
     }
     setClientServices(p => p.map(x => x.id === id ? { ...x, ...s } : x));

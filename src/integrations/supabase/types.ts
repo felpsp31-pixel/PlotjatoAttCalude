@@ -71,7 +71,6 @@ export type Database = {
           code: string
           description: string
           id: string
-          servico_id: string | null
           unit_price: number
         }
         Insert: {
@@ -79,7 +78,6 @@ export type Database = {
           code: string
           description: string
           id?: string
-          servico_id?: string | null
           unit_price?: number
         }
         Update: {
@@ -87,18 +85,9 @@ export type Database = {
           code?: string
           description?: string
           id?: string
-          servico_id?: string | null
           unit_price?: number
         }
-        Relationships: [
-          {
-            foreignKeyName: "client_services_servico_id_fkey"
-            columns: ["servico_id"]
-            isOneToOne: false
-            referencedRelation: "servicos"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       clientes: {
         Row: {
@@ -621,18 +610,21 @@ export type Database = {
           description: string
           id: string
           unit_price: number
+          universal: boolean
         }
         Insert: {
           code?: string
           description?: string
           id?: string
           unit_price?: number
+          universal?: boolean
         }
         Update: {
           code?: string
           description?: string
           id?: string
           unit_price?: number
+          universal?: boolean
         }
         Relationships: []
       }

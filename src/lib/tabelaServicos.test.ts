@@ -11,25 +11,21 @@ const cs = (o: Partial<ClientService>): ClientService =>
   ({ id: 'x', clienteId: 'c', code: '8', description: 'Especial', unitPrice: 1, ...o });
 
 describe('montarTabelaDoCliente', () => {
-  it('sem nada especial, vale a tabela geral', () => {
-    expect(montarTabelaDoCliente(GERAIS, [])).toEqual([
-      { value: '1', code: '1', description: 'Plotagem A0 Color', unitPrice: 22, especial: false },
-      { value: '2', code: '2', description: 'Plotagem A1 Color', unitPrice: 18, especial: false },
+  it('sem preco proprio, vale a tabela geral inteira', () => {
+    expect(montarTabelaDoCliente(GERAIS, []).map(i => i.code)).toEqual(['1', '2', '5']);
+  });
+
+  it('com preco proprio, ve a tabela dele mais os universais', () => {
+    const geraisComUniversal = GERAIS.map(sv => sv.id === 'pb' ? { ...sv, universal: true } : sv);
+    const t = montarTabelaDoCliente(geraisComUniversal, [cs({ code: '8', description: 'Plotagem A0 Corbis', unitPrice: 16.5 })]);
+    expect(t).toEqual([
+      { value: 'CS:8', code: '8', description: 'Plotagem A0 Corbis', unitPrice: 16.5, especial: true },
       { value: '5', code: '5', description: 'Plotagem A0 P&B', unitPrice: 11.5, especial: false },
     ]);
   });
 
-  it('preco especial troca so o preco daquele servico', () => {
-    const t = montarTabelaDoCliente(GERAIS, [cs({ servicoId: 'a0', unitPrice: 16.5 })]);
-    expect(t.find(i => i.code === '1')).toMatchObject({ unitPrice: 16.5, especial: true, description: 'Plotagem A0 Color' });
-    // o que nao tem preco especial continua universal e disponivel
-    expect(t.find(i => i.code === '5')).toMatchObject({ unitPrice: 11.5, especial: false });
-    expect(t).toHaveLength(3);
-  });
-
-  it('servico sem vinculo entra como exclusivo do cliente', () => {
-    const t = montarTabelaDoCliente(GERAIS, [cs({ code: '11', description: 'Impressão A4', unitPrice: 2.5 })]);
-    expect(t).toHaveLength(4);
-    expect(t[3]).toEqual({ value: 'CS:11', code: '11', description: 'Impressão A4', unitPrice: 2.5, especial: true });
+  it('sem nenhum universal, quem tem preco proprio ve so o dele', () => {
+    const t = montarTabelaDoCliente(GERAIS, [cs({ code: '8' })]);
+    expect(t.map(i => i.value)).toEqual(['CS:8']);
   });
 });

@@ -3,6 +3,7 @@ import { useRecibos } from '@/contexts/RecibosContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import {
@@ -64,17 +65,13 @@ const ServicosReciboPage = () => {
 
   // Client services state
   const [csFilterClienteId, setCsFilterClienteId] = useState('');
-  const [csForm, setCsForm] = useState({ clienteId: '', description: '', unitPrice: 0, servicoId: '' });
+  const [csForm, setCsForm] = useState({ clienteId: '', description: '', unitPrice: 0 });
   const [csEdit, setCsEdit] = useState<string | null>(null);
-  const [csEditData, setCsEditData] = useState({ code: '', description: '', unitPrice: 0, servicoId: '' });
+  const [csEditData, setCsEditData] = useState({ code: '', description: '', unitPrice: 0 });
   const [clientPage, setClientPage] = useState(1);
 
   const clienteOptions = clientes.map(c => ({ value: c.id, label: c.name }));
-  const EXCLUSIVO = '';
-  const servicoOptions = useMemo(() => [
-    ...servicos.map(sv => ({ value: sv.id, label: `${sv.code} - ${sv.description}` })),
-  ], [servicos]);
-  const servicoEscolhido = servicos.find(sv => sv.id === csForm.servicoId);
+
 
   // O código sai do maior já cadastrado + 1, recalculado a cada serviço
   // salvo. Não fica guardado em estado para não haver como repetir.
@@ -179,6 +176,9 @@ const ServicosReciboPage = () => {
 
         {/* SERVIÇOS GLOBAIS */}
         <TabsContent value="globais" className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Marque <strong>Universal</strong> para o serviço aparecer na emissão de recibo de <strong>todos</strong> os clientes, inclusive os que têm preço próprio. Sem a marcação, ele aparece só para quem não tem tabela própria.
+          </p>
           <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-end flex-wrap">
             <Input
               value={nextGlobalCode}
@@ -203,7 +203,7 @@ const ServicosReciboPage = () => {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow><TableHead>Código</TableHead><TableHead>Descrição</TableHead><TableHead>Valor Unitário</TableHead><TableHead className="w-24" /></TableRow>
+                <TableRow><TableHead>Código</TableHead><TableHead>Descrição</TableHead><TableHead>Valor Unitário</TableHead><TableHead className="w-28">Universal</TableHead><TableHead className="w-24" /></TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedServicos.map(s => (
@@ -213,8 +213,16 @@ const ServicosReciboPage = () => {
                         <TableCell><Input value={editData.code} onChange={e => setEditData(p => ({ ...p, code: e.target.value }))} className="text-base" /></TableCell>
                         <TableCell><Input value={editData.description} onChange={e => setEditData(p => ({ ...p, description: e.target.value }))} className="text-base" /></TableCell>
                         <TableCell><Input type="number" value={editData.unitPrice} onChange={e => setEditData(p => ({ ...p, unitPrice: e.target.value }))} className="text-base" /></TableCell>
+                        <TableCell />
                         <TableCell className="flex gap-1">
-                          <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { updateServico(s.id, { code: editData.code, description: editData.description, unitPrice: Number(editData.unitPrice) || 0 }); setEditId(null); toast.success('Atualizado'); }}><Check className="h-4 w-4" /></Button>
+                          <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={async () => {
+                            const codigo = editData.code.trim();
+                            if (!codigo || codigo === CODIGO_RESERVADO) { toast.error(`O código ${CODIGO_RESERVADO} é reservado para o serviço personalizado.`); return; }
+                            if (servicos.some(o => o.id !== s.id && o.code === codigo)) { toast.error(`O código ${codigo} já está em uso.`); return; }
+                            const ok = await updateServico(s.id, { code: codigo, description: editData.description, unitPrice: Number(editData.unitPrice) || 0 });
+                            if (!ok) return;
+                            setEditId(null); toast.success('Atualizado');
+                          }}><Check className="h-4 w-4" /></Button>
                           <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => setEditId(null)}><X className="h-4 w-4" /></Button>
                         </TableCell>
                       </>
@@ -223,6 +231,16 @@ const ServicosReciboPage = () => {
                         <TableCell className="text-foreground">{s.code}</TableCell>
                         <TableCell className="text-foreground">{s.description}</TableCell>
                         <TableCell className="text-foreground">{s.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                        <TableCell>
+                          <Checkbox
+                            checked={!!s.universal}
+                            aria-label={`${s.description}: aparece para todos os clientes`}
+                            onCheckedChange={async v => {
+                              const ok = await updateServico(s.id, { universal: !!v });
+                              if (ok) toast.success(v ? 'Aparece para todos os clientes' : 'Só para quem não tem preço próprio');
+                            }}
+                          />
+                        </TableCell>
                         <TableCell className="flex gap-1">
                           <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { setEditId(s.id); setEditData({ code: s.code, description: s.description, unitPrice: String(s.unitPrice) }); }}><Pencil className="h-4 w-4" /></Button>
                           <DeleteButton onConfirm={() => { deleteServico(s.id); toast.success('Removido'); }} />
@@ -248,38 +266,26 @@ const ServicosReciboPage = () => {
         {/* SERVIÇOS POR CLIENTE */}
         <TabsContent value="cliente" className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Escolha um serviço da tabela geral para dar a esse cliente um <strong>preço especial</strong>: ele passa a valer no lugar do universal, e o cliente continua enxergando todos os outros serviços. Deixe o campo vazio para criar um serviço que <strong>só esse cliente</strong> tem.
+            Cliente com preço próprio enxerga a tabela dele na emissão do recibo, e não a geral. Os serviços marcados como <strong>universais</strong> na outra aba aparecem para ele também.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <Combobox options={clienteOptions} value={csForm.clienteId} onValueChange={v => setCsForm(p => ({ ...p, clienteId: v }))} placeholder="Cliente" />
-            <Combobox
-              options={servicoOptions}
-              value={csForm.servicoId}
-              onValueChange={v => setCsForm(p => ({ ...p, servicoId: v, description: servicos.find(sv => sv.id === v)?.description ?? p.description }))}
-              placeholder="Preço especial de..."
-              emptyText="Nenhum serviço na tabela geral."
-            />
             <Input
-              value={servicoEscolhido ? servicoEscolhido.code : nextClientCode}
+              value={nextClientCode}
               readOnly
               aria-label="Código do serviço (automático)"
               title="O código é gerado automaticamente"
               className="text-base bg-muted text-muted-foreground"
             />
-            <Input placeholder="Descrição" value={csForm.description} onChange={e => setCsForm(p => ({ ...p, description: e.target.value }))} readOnly={!!servicoEscolhido} className={`text-base${servicoEscolhido ? ' bg-muted text-muted-foreground' : ''}`} />
+            <Input placeholder="Descrição" value={csForm.description} onChange={e => setCsForm(p => ({ ...p, description: e.target.value }))} className="text-base" />
             <Input type="number" min={0} step="0.01" placeholder="Valor unitário" value={csForm.unitPrice || ''} onChange={e => setCsForm(p => ({ ...p, unitPrice: Number(e.target.value) || 0 }))} className="text-base" />
           </div>
           <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={async () => {
             if (!csForm.clienteId || !csForm.description.trim()) { toast.error('Preencha cliente e descrição'); return; }
-            const ok = await addClientService({
-              ...csForm,
-              code: servicoEscolhido ? servicoEscolhido.code : nextClientCode,
-              description: csForm.description.trim(),
-              servicoId: csForm.servicoId || undefined,
-            });
+            const ok = await addClientService({ ...csForm, code: nextClientCode, description: csForm.description.trim() });
             if (!ok) return;
-            setCsForm({ clienteId: '', description: '', unitPrice: 0, servicoId: '' });
-            toast.success(servicoEscolhido ? 'Preço especial salvo' : 'Serviço do cliente adicionado');
+            setCsForm({ clienteId: '', description: '', unitPrice: 0 });
+            toast.success('Serviço do cliente adicionado');
           }}>
             <Plus className="h-4 w-4 mr-1" /> Adicionar
           </Button>
@@ -316,28 +322,18 @@ const ServicosReciboPage = () => {
                         <>
                           <TableCell className="text-foreground">{clienteName}</TableCell>
                           <TableCell><Input value={csEditData.code} onChange={e => setCsEditData(p => ({ ...p, code: e.target.value }))} className="text-base" /></TableCell>
-                          <TableCell className="space-y-1">
-                            <Input value={csEditData.description} onChange={e => setCsEditData(p => ({ ...p, description: e.target.value }))} className="text-base" />
-                            <Combobox
-                              options={servicoOptions}
-                              value={csEditData.servicoId}
-                              onValueChange={v => setCsEditData(p => ({ ...p, servicoId: v, code: servicos.find(sv => sv.id === v)?.code ?? p.code }))}
-                              placeholder="Preço especial de... (vazio: só deste cliente)"
-                            />
-                          </TableCell>
+                          <TableCell><Input value={csEditData.description} onChange={e => setCsEditData(p => ({ ...p, description: e.target.value }))} className="text-base" /></TableCell>
                           <TableCell><Input type="number" min={0} step="0.01" value={csEditData.unitPrice || ''} onChange={e => setCsEditData(p => ({ ...p, unitPrice: Number(e.target.value) || 0 }))} className="text-base w-24" /></TableCell>
                           <TableCell className="flex gap-1">
                             <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={async () => {
                             const codigo = csEditData.code.trim();
                             if (!codigo || codigo === CODIGO_RESERVADO) { toast.error(`O código ${CODIGO_RESERVADO} é reservado para o serviço personalizado.`); return; }
-                            if (!csEditData.servicoId) {
-                              const emUso = [
-                                ...servicos.map(o => o.code),
-                                ...clientServices.filter(o => o.clienteId === cs.clienteId && o.id !== cs.id && !o.servicoId).map(o => o.code),
-                              ].includes(codigo);
-                              if (emUso) { toast.error(`O código ${codigo} já está em uso neste cliente.`); return; }
-                            }
-                            const salvou = await updateClientService(cs.id, { ...csEditData, code: codigo, servicoId: csEditData.servicoId || undefined });
+                            const emUso = [
+                              ...servicos.map(o => o.code),
+                              ...clientServices.filter(o => o.clienteId === cs.clienteId && o.id !== cs.id).map(o => o.code),
+                            ].includes(codigo);
+                            if (emUso) { toast.error(`O código ${codigo} já está em uso neste cliente.`); return; }
+                            const salvou = await updateClientService(cs.id, { ...csEditData, code: codigo });
                             if (!salvou) return;
                             setCsEdit(null); toast.success('Atualizado');
                           }}><Check className="h-4 w-4" /></Button>
@@ -348,15 +344,10 @@ const ServicosReciboPage = () => {
                         <>
                           <TableCell className="text-foreground">{clienteName}</TableCell>
                           <TableCell className="text-foreground">{cs.code}</TableCell>
-                          <TableCell className="text-foreground">
-                            {cs.description}
-                            {cs.servicoId
-                              ? <span className="block text-xs text-muted-foreground">preço especial de {servicos.find(sv => sv.id === cs.servicoId)?.description ?? 'serviço removido'}</span>
-                              : <span className="block text-xs text-muted-foreground">só deste cliente</span>}
-                          </TableCell>
+                          <TableCell className="text-foreground">{cs.description}</TableCell>
                           <TableCell className="text-foreground">{cs.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                           <TableCell className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { setCsEdit(cs.id); setCsEditData({ code: cs.code, description: cs.description, unitPrice: cs.unitPrice, servicoId: cs.servicoId ?? '' }); }}><Pencil className="h-4 w-4" /></Button>
+                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { setCsEdit(cs.id); setCsEditData({ code: cs.code, description: cs.description, unitPrice: cs.unitPrice }); }}><Pencil className="h-4 w-4" /></Button>
                             <DeleteButton onConfirm={() => { deleteClientService(cs.id); toast.success('Removido'); }} />
                           </TableCell>
                         </>

@@ -27,6 +27,8 @@ export interface Servico {
   code: string;
   description: string;
   unitPrice: number;
+  /** Aparece para todo cliente, inclusive os que têm tabela própria. */
+  universal?: boolean;
 }
 
 export interface ClientService {
@@ -35,8 +37,6 @@ export interface ClientService {
   code: string;
   description: string;
   unitPrice: number;
-  /** Serviço da tabela geral cujo preço este substitui. Vazio = só deste cliente. */
-  servicoId?: string;
 }
 
 export interface LinhaRecibo {

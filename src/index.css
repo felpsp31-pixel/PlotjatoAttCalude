@@ -26,6 +26,9 @@
     --muted: 220 14% 94%;
     --muted-foreground: 215 15% 45%;
 
+    /* Fundo da área de demandas concluídas: cinza claro puxado para o azul */
+    --concluidas: 216 18% 90%;
+
     --accent: 220 14% 92%;
     --accent-foreground: 220 20% 18%;
 
@@ -84,6 +87,8 @@
 
     --muted: 220 14% 18%;
     --muted-foreground: 215 15% 55%;
+
+    --concluidas: 218 13% 23%;
 
     --accent: 220 16% 18%;
     --accent-foreground: 210 25% 88%;

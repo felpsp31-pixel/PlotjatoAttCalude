@@ -852,6 +852,9 @@ const DemandasPage = () => {
               </div>
             )}
 
+            {/* Concluídas: área com fundo próprio para separar das demandas em aberto */}
+            {(completedNotRetirada.length > 0 || completedRetirada.length > 0) && (
+            <div className="rounded-xl bg-concluidas p-3 sm:p-4 space-y-6">
             {/* Concluídas (aguardando retirada) */}
             {completedNotRetirada.length > 0 && (
               <div>
@@ -1011,6 +1014,8 @@ const DemandasPage = () => {
                 )}
                 <p className="text-xs text-muted-foreground mt-1">Demandas concluídas e retiradas são excluídas automaticamente após 48 horas.</p>
               </div>
+            )}
+            </div>
             )}
           </div>
         )}

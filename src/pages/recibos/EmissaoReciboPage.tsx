@@ -55,8 +55,8 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   const [lastRecibo, setLastRecibo] = useState<typeof recibos[0] | null>(null);
   const [isPago, setIsPago] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState('');
-  // Avulso: paga tudo no ato ou deixa um sinal (o resto fica para depois).
-  const [modoAvulso, setModoAvulso] = useState<'ato' | 'sinal'>('ato');
+  // Avulso: já pago, sinal (o resto fica para depois) ou pagamento no ato (paga ao retirar).
+  const [modoAvulso, setModoAvulso] = useState<'pago' | 'sinal' | 'ato'>('pago');
   const [sinalInput, setSinalInput] = useState('');
   const emSinal = tipoCliente === 'avulso' && modoAvulso === 'sinal';
   const sinalValor = emSinal ? Number(sinalInput.replace(',', '.')) || 0 : 0;
@@ -104,7 +104,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     setAvulsoDocumento('');
     // Avulso paga na hora; faturado entra no fechamento do mes.
     setIsPago(novo === 'avulso');
-    setModoAvulso('ato');
+    setModoAvulso('pago');
     setSinalInput('');
     if (novo === 'faturado') setFormaPagamento('');
   };
@@ -297,7 +297,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
 
   const handleNew = () => {
     setClienteId(''); setClienteAvulso(''); setClienteSearch(''); setSolicitanteId(''); setObraId('');
-    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(tipoCliente === 'avulso'); setModoAvulso('ato'); setSinalInput(''); setFormaPagamento(''); setObraAvulsa(''); setAvulsoTelefone(''); setAvulsoDocumento('');
+    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(tipoCliente === 'avulso'); setModoAvulso('pago'); setSinalInput(''); setFormaPagamento(''); setObraAvulsa(''); setAvulsoTelefone(''); setAvulsoDocumento('');
     setHasDiscount(false); setDiscountInput(''); setDiscountType('percent');
     setImportacao(null);
   };
@@ -738,14 +738,19 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
           {tipoCliente === 'avulso' ? (
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
-                <input type="radio" name="modo-avulso" checked={modoAvulso === 'ato'} disabled={saved}
-                  onChange={() => { setModoAvulso('ato'); setIsPago(true); setSinalInput(''); }} />
-                Pagamento no ato
+                <input type="radio" name="modo-avulso" checked={modoAvulso === 'pago'} disabled={saved}
+                  onChange={() => { setModoAvulso('pago'); setIsPago(true); setSinalInput(''); }} />
+                Pago
               </label>
               <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
                 <input type="radio" name="modo-avulso" checked={modoAvulso === 'sinal'} disabled={saved}
                   onChange={() => { setModoAvulso('sinal'); setIsPago(false); }} />
                 Sinal
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
+                <input type="radio" name="modo-avulso" checked={modoAvulso === 'ato'} disabled={saved}
+                  onChange={() => { setModoAvulso('ato'); setIsPago(false); setSinalInput(''); setFormaPagamento(''); }} />
+                Pagamento no ato
               </label>
               {emSinal && (
                 <>

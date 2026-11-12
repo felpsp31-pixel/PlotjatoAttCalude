@@ -38,7 +38,10 @@ const DeleteButton = ({ onConfirm }: { onConfirm: () => void }) => (
 );
 
 // Calcula o próximo código sequencial baseado nos códigos numéricos existentes
-const computeNextCode = (codes: string[]): string => {
+// O código 0 é do serviço personalizado na emissão do recibo.
+export const CODIGO_RESERVADO = '0';
+
+export const computeNextCode = (codes: string[]): string => {
   const numericCodes = codes
     .map(c => parseInt(String(c).replace(/\D/g, ''), 10))
     .filter(n => !isNaN(n));
@@ -54,25 +57,23 @@ const ServicosReciboPage = () => {
   } = useRecibos();
 
   // Global services state
-  const [form, setForm] = useState({ code: '', description: '', unitPrice: '' });
+  const [form, setForm] = useState({ description: '', unitPrice: '' });
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState({ code: '', description: '', unitPrice: '' });
   const [globalPage, setGlobalPage] = useState(1);
 
   // Client services state
   const [csFilterClienteId, setCsFilterClienteId] = useState('');
-  const [csForm, setCsForm] = useState({ clienteId: '', code: '', description: '', unitPrice: 0 });
+  const [csForm, setCsForm] = useState({ clienteId: '', description: '', unitPrice: 0 });
   const [csEdit, setCsEdit] = useState<string | null>(null);
   const [csEditData, setCsEditData] = useState({ code: '', description: '', unitPrice: 0 });
   const [clientPage, setClientPage] = useState(1);
 
   const clienteOptions = clientes.map(c => ({ value: c.id, label: c.name }));
 
-  // Auto-incremento do código global
+  // O código sai do maior já cadastrado + 1, recalculado a cada serviço
+  // salvo. Não fica guardado em estado para não haver como repetir.
   const nextGlobalCode = useMemo(() => computeNextCode(servicos.map(s => s.code)), [servicos]);
-  useEffect(() => {
-    setForm(p => (p.code === '' ? { ...p, code: nextGlobalCode } : p));
-  }, [nextGlobalCode]);
 
   // Auto-incremento do código por cliente (considera todos os serviços do cliente + globais)
   const nextClientCode = useMemo(() => {
@@ -83,9 +84,6 @@ const ServicosReciboPage = () => {
     const allCodes = [...servicos.map(s => s.code), ...codesDoCliente];
     return computeNextCode(allCodes);
   }, [csForm.clienteId, clientServices, servicos]);
-  useEffect(() => {
-    setCsForm(p => ({ ...p, code: nextClientCode }));
-  }, [nextClientCode]);
 
   const filteredClientServices = useMemo(() =>
     csFilterClienteId ? clientServices.filter(cs => cs.clienteId === csFilterClienteId) : clientServices,
@@ -177,13 +175,20 @@ const ServicosReciboPage = () => {
         {/* SERVIÇOS GLOBAIS */}
         <TabsContent value="globais" className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-end flex-wrap">
-            <Input placeholder="Código" value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))} className="w-full sm:w-28 text-base" />
+            <Input
+              value={nextGlobalCode}
+              readOnly
+              aria-label="Código do próximo serviço (automático)"
+              title="O código é gerado automaticamente"
+              className="w-full sm:w-28 text-base bg-muted text-muted-foreground"
+            />
             <Input placeholder="Descrição" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="w-full sm:w-60 text-base" />
             <Input placeholder="Valor unitário" type="number" value={form.unitPrice} onChange={e => setForm(p => ({ ...p, unitPrice: e.target.value }))} className="w-full sm:w-36 text-base" />
-            <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={() => {
-              if (!form.code || !form.description) { toast.error('Preencha código e descrição'); return; }
-              addServico({ code: form.code, description: form.description, unitPrice: Number(form.unitPrice) || 0 });
-              setForm({ code: '', description: '', unitPrice: '' });
+            <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={async () => {
+              if (!form.description.trim()) { toast.error('Preencha a descrição'); return; }
+              const ok = await addServico({ code: nextGlobalCode, description: form.description.trim(), unitPrice: Number(form.unitPrice) || 0 });
+              if (!ok) return;
+              setForm({ description: '', unitPrice: '' });
               toast.success('Serviço adicionado');
               setGlobalPage(Math.ceil((servicos.length + 1) / PAGE_SIZE));
             }}>
@@ -240,14 +245,21 @@ const ServicosReciboPage = () => {
           <p className="text-sm text-muted-foreground">Cadastre serviços com valores específicos para cada cliente. Eles aparecerão na emissão de recibo junto aos serviços globais.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <Combobox options={clienteOptions} value={csForm.clienteId} onValueChange={v => setCsForm(p => ({ ...p, clienteId: v }))} placeholder="Cliente" />
-            <Input placeholder="Código" value={csForm.code} onChange={e => setCsForm(p => ({ ...p, code: e.target.value }))} className="text-base" />
+            <Input
+              value={nextClientCode}
+              readOnly
+              aria-label="Código do próximo serviço do cliente (automático)"
+              title="O código é gerado automaticamente"
+              className="text-base bg-muted text-muted-foreground"
+            />
             <Input placeholder="Descrição" value={csForm.description} onChange={e => setCsForm(p => ({ ...p, description: e.target.value }))} className="text-base" />
             <Input type="number" min={0} step="0.01" placeholder="Valor unitário" value={csForm.unitPrice || ''} onChange={e => setCsForm(p => ({ ...p, unitPrice: Number(e.target.value) || 0 }))} className="text-base" />
           </div>
-          <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={() => {
-            if (!csForm.clienteId || !csForm.code || !csForm.description) { toast.error('Preencha cliente, código e descrição'); return; }
-            addClientService(csForm);
-            setCsForm({ clienteId: '', code: '', description: '', unitPrice: 0 });
+          <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={async () => {
+            if (!csForm.clienteId || !csForm.description.trim()) { toast.error('Preencha cliente e descrição'); return; }
+            const ok = await addClientService({ ...csForm, code: nextClientCode, description: csForm.description.trim() });
+            if (!ok) return;
+            setCsForm({ clienteId: '', description: '', unitPrice: 0 });
             toast.success('Serviço do cliente adicionado');
           }}>
             <Plus className="h-4 w-4 mr-1" /> Adicionar
@@ -288,7 +300,17 @@ const ServicosReciboPage = () => {
                           <TableCell><Input value={csEditData.description} onChange={e => setCsEditData(p => ({ ...p, description: e.target.value }))} className="text-base" /></TableCell>
                           <TableCell><Input type="number" min={0} step="0.01" value={csEditData.unitPrice || ''} onChange={e => setCsEditData(p => ({ ...p, unitPrice: Number(e.target.value) || 0 }))} className="text-base w-24" /></TableCell>
                           <TableCell className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { updateClientService(cs.id, csEditData); setCsEdit(null); toast.success('Atualizado'); }}><Check className="h-4 w-4" /></Button>
+                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={async () => {
+                            const codigo = csEditData.code.trim();
+                            if (!codigo || codigo === CODIGO_RESERVADO) { toast.error(`O código ${CODIGO_RESERVADO} é reservado para o serviço personalizado.`); return; }
+                            const emUso = [
+                              ...servicos.map(o => o.code),
+                              ...clientServices.filter(o => o.clienteId === cs.clienteId && o.id !== cs.id).map(o => o.code),
+                            ].includes(codigo);
+                            if (emUso) { toast.error(`O código ${codigo} já está em uso neste cliente.`); return; }
+                            await updateClientService(cs.id, { ...csEditData, code: codigo });
+                            setCsEdit(null); toast.success('Atualizado');
+                          }}><Check className="h-4 w-4" /></Button>
                             <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => setCsEdit(null)}><X className="h-4 w-4" /></Button>
                           </TableCell>
                         </>

@@ -28,11 +28,11 @@ interface RecibosContextType {
   updateObra: (id: string, o: Partial<Obra>) => void;
   deleteObra: (id: string) => void;
   servicos: Servico[];
-  addServico: (s: Omit<Servico, 'id'>) => void;
-  updateServico: (id: string, s: Partial<Servico>) => void;
+  addServico: (s: Omit<Servico, 'id'>) => Promise<boolean>;
+  updateServico: (id: string, s: Partial<Servico>) => Promise<boolean>;
   deleteServico: (id: string) => void;
   clientServices: ClientService[];
-  addClientService: (s: Omit<ClientService, 'id'>) => void;
+  addClientService: (s: Omit<ClientService, 'id'>) => Promise<boolean>;
   updateClientService: (id: string, s: Partial<ClientService>) => void;
   deleteClientService: (id: string) => void;
   recibos: Recibo[];
@@ -330,18 +330,29 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.from('servicos').insert([{
       code: s.code, description: s.description, unit_price: s.unitPrice,
     }]).select().single();
-    if (data && !error) {
-      setServicos(p => [...p, { id: data.id, code: data.code, description: data.description, unitPrice: Number(data.unit_price) }]);
+    if (error || !data) {
+      // 23505 = o banco recusou um codigo que ja existe.
+      toast.error(error?.code === '23505' ? `O código ${s.code} já está em uso.` : 'Erro ao salvar o serviço.');
+      return false;
     }
+    setServicos(p => [...p, { id: data.id, code: data.code, description: data.description, unitPrice: Number(data.unit_price) }]);
+    return true;
   }, []);
 
   const updateServico = useCallback(async (id: string, s: Partial<Servico>) => {
-    setServicos(p => p.map(x => x.id === id ? { ...x, ...s } : x));
     const dbData: Record<string, unknown> = {};
     if (s.code !== undefined) dbData.code = s.code;
     if (s.description !== undefined) dbData.description = s.description;
     if (s.unitPrice !== undefined) dbData.unit_price = s.unitPrice;
-    await supabase.from('servicos').update(dbData).eq('id', id);
+    // Grava primeiro e so entao muda a tela: um codigo repetido e recusado
+    // pelo banco e a lista continua como estava.
+    const { error } = await supabase.from('servicos').update(dbData).eq('id', id);
+    if (error) {
+      toast.error(error.code === '23505' ? `O código ${s.code} já está em uso.` : 'Erro ao atualizar o serviço.');
+      return false;
+    }
+    setServicos(p => p.map(x => x.id === id ? { ...x, ...s } : x));
+    return true;
   }, []);
 
   const deleteServico = useCallback(async (id: string) => {
@@ -354,10 +365,13 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.from('client_services').insert([{
       cliente_id: s.clienteId, code: s.code, description: s.description, unit_price: s.unitPrice,
     }]).select().single();
-    if (data && !error) {
-      const d = data;
-      setClientServices(p => [...p, { id: d.id, clienteId: d.cliente_id, code: d.code, description: d.description, unitPrice: Number(d.unit_price) }]);
+    if (error || !data) {
+      toast.error(error?.code === '23505' ? `O código ${s.code} já está em uso neste cliente.` : 'Erro ao salvar o serviço.');
+      return false;
     }
+    const d = data;
+    setClientServices(p => [...p, { id: d.id, clienteId: d.cliente_id, code: d.code, description: d.description, unitPrice: Number(d.unit_price) }]);
+    return true;
   }, []);
 
   const updateClientService = useCallback(async (id: string, s: Partial<ClientService>) => {

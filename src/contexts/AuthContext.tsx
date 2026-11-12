@@ -5,6 +5,8 @@ import { esquecerSessaoSistema, sairFinanceiro } from '@/lib/sessaoFinanceiro';
 
 const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24h (1 dia)
 const SESSION_KEY = 'app_session';
+/** Tolerância máxima, sem internet, depois que a sessão venceu. */
+const OFFLINE_EXTRA = 24 * 60 * 60 * 1000;
 
 interface AuthContextType {
   authenticated: boolean;
@@ -27,9 +29,10 @@ const getSession = () => {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const { expiresAt } = JSON.parse(raw);
-    // Sem internet não dá para entrar de novo, então a sessão vale até a
-    // conexão voltar (senão o balcão ficaria sem emitir recibo).
-    if (Date.now() > expiresAt && navigator.onLine !== false) {
+    // Sem internet não dá para entrar de novo, então a sessão ganha até
+    // mais um dia de tolerância (senão o balcão ficaria sem emitir recibo).
+    const tolerancia = navigator.onLine === false ? OFFLINE_EXTRA : 0;
+    if (Date.now() > expiresAt + tolerancia) {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
@@ -82,8 +85,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const remaining = Number(expiresAt) - Date.now();
       // Vencendo sem internet, só sai quando a conexão voltar.
       const expirar = () => {
-        if (navigator.onLine === false) window.addEventListener('online', () => signOut(), { once: true });
-        else signOut();
+        if (navigator.onLine === false && Date.now() < Number(expiresAt) + OFFLINE_EXTRA) {
+          window.addEventListener('online', () => signOut(), { once: true });
+          timeoutRef.current = setTimeout(signOut, Number(expiresAt) + OFFLINE_EXTRA - Date.now());
+        } else signOut();
       };
       if (remaining <= 0) {
         expirar();

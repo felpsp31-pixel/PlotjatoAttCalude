@@ -69,7 +69,7 @@ begin
   -- (um lancamento em aberto que ja foi pago nao recebe valor novo).
   select id into alvo
   from public.financial_invoices
-  where entity_type = 'client' and entity_id = new.cliente_id and reference_month = ref
+  where entity_type = 'client' and entity_id = new.cliente_id::text and reference_month = ref
     and status = situacao and description in (descricao, descricao || ' (complementar)')
   order by created_at
   limit 1
@@ -84,10 +84,10 @@ begin
   insert into public.financial_invoices
     (entity_id, entity_name, entity_type, description, value, due_date, reference_month, status, attachments)
   values (
-    new.cliente_id, coalesce(nome, 'Cliente'), 'client',
+    new.cliente_id::text, coalesce(nome, 'Cliente'), 'client',
     case when exists (
       select 1 from public.financial_invoices
-      where entity_type = 'client' and entity_id = new.cliente_id and reference_month = ref and description = descricao
+      where entity_type = 'client' and entity_id = new.cliente_id::text and reference_month = ref and description = descricao
     ) then descricao || ' (complementar)' else descricao end,
     round(new.total, 2),
     (make_date(ano, mes, 1) + interval '1 month')::date + 9,

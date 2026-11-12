@@ -24,6 +24,8 @@ const json = (body: unknown, status = 200) =>
 
 const TIPOS = ["access_password", "financial_password", "reports_password"];
 const MAX_ERROS = 8;
+/** Erros somados de todas as origens dentro da janela. */
+const MAX_ERROS_GERAL = 30;
 const JANELA_MIN = 15;
 
 async function hashPassword(password: string): Promise<string> {
@@ -57,7 +59,11 @@ Deno.serve(async (req) => {
     }
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconhecido";
+    // O primeiro endereco do x-forwarded-for vem de quem chama e pode ser
+    // inventado a cada tentativa. O ultimo e o que a propria infraestrutura
+    // anotou, entao e o usado para contar os erros.
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",").map((x) => x.trim()).filter(Boolean).pop()
+      || req.headers.get("x-real-ip") || "desconhecido";
 
     // Limite de tentativas por IP. Registros com mais de um dia nao servem mais.
     await admin.from("tentativas_senha").delete().lt("criado_em", new Date(Date.now() - 86_400_000).toISOString());
@@ -68,6 +74,16 @@ Deno.serve(async (req) => {
       .eq("ip", ip)
       .gte("criado_em", desde);
     if ((count ?? 0) >= MAX_ERROS) {
+      return json({ valid: false, error: `Muitas tentativas. Aguarde ${JANELA_MIN} minutos.` }, 429);
+    }
+
+    // Teto geral, de qualquer origem: mesmo trocando de endereco a cada
+    // tentativa, ninguem testa mais que MAX_ERROS_GERAL senhas na janela.
+    const { count: geral } = await admin
+      .from("tentativas_senha")
+      .select("id", { count: "exact", head: true })
+      .gte("criado_em", desde);
+    if ((geral ?? 0) >= MAX_ERROS_GERAL) {
       return json({ valid: false, error: `Muitas tentativas. Aguarde ${JANELA_MIN} minutos.` }, 429);
     }
 

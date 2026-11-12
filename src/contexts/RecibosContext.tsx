@@ -147,6 +147,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
             lines: (r.lines as unknown as Recibo['lines']) || [],
             total: Number(r.total),
             isPago: r.is_pago, formaPagamento: r.forma_pagamento || undefined,
+            valorSinal: r.valor_sinal != null ? Number(r.valor_sinal) : undefined,
           })));
         });
 
@@ -436,7 +437,8 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
         lines: JSON.parse(JSON.stringify(r.lines)),
         total: r.total,
         is_pago: !!r.isPago,
-        forma_pagamento: r.isPago ? r.formaPagamento ?? null : null,
+        forma_pagamento: r.isPago || r.valorSinal ? r.formaPagamento ?? null : null,
+        valor_sinal: r.isPago ? null : r.valorSinal ?? null,
       }]);
 
       if (!error) {

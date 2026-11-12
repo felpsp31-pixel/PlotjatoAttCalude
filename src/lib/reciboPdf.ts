@@ -253,6 +253,18 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
       doc.setTextColor(110);
       doc.text('Orçamento sujeito a confirmação. Este documento não é recibo e não comprova pagamento.', left + innerW / 2, notaY, { align: 'center' });
       doc.setTextColor(0, 0, 0);
+    } else if (!isPago && (r.valorSinal ?? 0) > 0) {
+      const sinal = Math.min(r.valorSinal as number, r.total);
+      const stampY = Math.min(Math.max(cy + 12 * k, PAGE_H - 26 * k), PAGE_H - 12 * k);
+      doc.setFont('helvetica', 'bold');
+      fs(18);
+      doc.setTextColor(217, 119, 6);
+      doc.text('SINAL', left + innerW / 2, stampY, { align: 'center' });
+      fs(8);
+      const forma = formaPagamento ? ` (${formaPagamento})` : '';
+      doc.text(`Pago: ${brl(sinal)}${forma}  ·  Falta: ${brl(r.total - sinal)}`, left + innerW / 2, Math.min(stampY + 4.5 * k, PAGE_H - 6 * k), { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
     } else if (isPago) {
       const stampY = Math.min(Math.max(cy + 12 * k, PAGE_H - 26 * k), PAGE_H - 12 * k);
       doc.setFont('helvetica', 'bold');

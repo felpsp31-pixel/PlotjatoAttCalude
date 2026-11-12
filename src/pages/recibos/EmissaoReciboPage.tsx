@@ -55,6 +55,11 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   const [lastRecibo, setLastRecibo] = useState<typeof recibos[0] | null>(null);
   const [isPago, setIsPago] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState('');
+  // Avulso: paga tudo no ato ou deixa um sinal (o resto fica para depois).
+  const [modoAvulso, setModoAvulso] = useState<'ato' | 'sinal'>('ato');
+  const [sinalInput, setSinalInput] = useState('');
+  const emSinal = tipoCliente === 'avulso' && modoAvulso === 'sinal';
+  const sinalValor = emSinal ? Number(sinalInput.replace(',', '.')) || 0 : 0;
   const [salvando, setSalvando] = useState(false);
   const [hasDiscount, setHasDiscount] = useState(false);
   const [discountType, setDiscountType] = useState<'percent' | 'value'>('percent');
@@ -99,6 +104,8 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     setAvulsoDocumento('');
     // Avulso paga na hora; faturado entra no fechamento do mes.
     setIsPago(novo === 'avulso');
+    setModoAvulso('ato');
+    setSinalInput('');
     if (novo === 'faturado') setFormaPagamento('');
   };
 
@@ -244,12 +251,17 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     const validLines = lines.filter(l => l.serviceCode && l.quantity > 0);
     if (validLines.length === 0) { toast.error('Adicione ao menos um serviço.'); return null; }
     const personalizadaIncompleta = validLines.find(l => l.serviceCode === CODIGO_PERSONALIZADO && (!l.description.trim() || l.unitPrice <= 0));
-    if (!orcamento && isPago && !formaPagamento) { toast.error('Escolha a forma de pagamento.'); return null; }
+    if (!orcamento && (isPago || emSinal) && !formaPagamento) { toast.error('Escolha a forma de pagamento.'); return null; }
     if (personalizadaIncompleta) { toast.error('No serviço personalizado (código 0), preencha a descrição e o valor.'); return null; }
     const sub = validLines.reduce((s, l) => s + l.total, 0);
     const v = parseFloat(discountInput.replace(',', '.')) || 0;
     const desc = !hasDiscount ? 0 : discountType === 'percent' ? Math.min(sub, (sub * v) / 100) : Math.min(sub, v);
-    return { validLines, total: Math.max(0, sub - desc) };
+    const totalFinal = Math.max(0, sub - desc);
+    if (!orcamento && emSinal && !(sinalValor > 0 && sinalValor < totalFinal)) {
+      toast.error('O sinal deve ser maior que zero e menor que o total. Para pagamento completo, use Pagamento no ato.');
+      return null;
+    }
+    return { validLines, total: totalFinal };
   };
 
   const handleSave = async () => {
@@ -259,7 +271,8 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     setSalvando(true);
     const recibo = await addRecibo({
       date: hojeBR(),
-      isPago, formaPagamento: isPago ? formaPagamento : undefined,
+      isPago, formaPagamento: isPago || emSinal ? formaPagamento : undefined,
+      valorSinal: emSinal ? sinalValor : undefined,
       obraAvulsa: obraId ? undefined : obraAvulsa.trim() || undefined,
       clienteAvulsoTelefone: tipoCliente === 'avulso' ? avulsoTelefone.trim() || undefined : undefined,
       clienteAvulsoDocumento: tipoCliente === 'avulso' ? avulsoDocumento.trim() || undefined : undefined,
@@ -284,7 +297,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
 
   const handleNew = () => {
     setClienteId(''); setClienteAvulso(''); setClienteSearch(''); setSolicitanteId(''); setObraId('');
-    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(tipoCliente === 'avulso'); setFormaPagamento(''); setObraAvulsa(''); setAvulsoTelefone(''); setAvulsoDocumento('');
+    setLines(emptyLines()); setSaved(false); setLastRecibo(null); setIsPago(tipoCliente === 'avulso'); setModoAvulso('ato'); setSinalInput(''); setFormaPagamento(''); setObraAvulsa(''); setAvulsoTelefone(''); setAvulsoDocumento('');
     setHasDiscount(false); setDiscountInput(''); setDiscountType('percent');
     setImportacao(null);
   };
@@ -301,7 +314,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
     obra: obras.find(o => o.id === lastRecibo?.obraId) ?? (lastRecibo?.obraAvulsa ? { name: lastRecibo.obraAvulsa } : undefined),
     empresaInfo,
     isPago,
-    formaPagamento: isPago ? formaPagamento : undefined,
+    formaPagamento: isPago || emSinal ? formaPagamento : undefined,
     descontoLabel: hasDiscount && discountType === 'percent'
       ? `Desconto (${parseFloat(discountInput.replace(',', '.')) || 0}%):`
       : 'Desconto:',
@@ -722,11 +735,37 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
             </p>
           </div>
           {!orcamento && (<>
+          {tipoCliente === 'avulso' ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
+                <input type="radio" name="modo-avulso" checked={modoAvulso === 'ato'} disabled={saved}
+                  onChange={() => { setModoAvulso('ato'); setIsPago(true); setSinalInput(''); }} />
+                Pagamento no ato
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
+                <input type="radio" name="modo-avulso" checked={modoAvulso === 'sinal'} disabled={saved}
+                  onChange={() => { setModoAvulso('sinal'); setIsPago(false); }} />
+                Sinal
+              </label>
+              {emSinal && (
+                <>
+                  <Input
+                    type="number" min={0} step="0.01" placeholder="Valor do sinal" value={sinalInput}
+                    onChange={e => setSinalInput(e.target.value)} disabled={saved} className="h-8 w-32 text-base"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Falta: <strong className="text-foreground">{Math.max(0, total - sinalValor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                  </span>
+                </>
+              )}
+            </div>
+          ) : (
           <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
             <Checkbox checked={isPago} onCheckedChange={(v) => { setIsPago(!!v); if (!v) setFormaPagamento(''); }} disabled={saved} />
             Pago
           </label>
-          {isPago && (
+          )}
+          {(isPago || emSinal) && (
             <Select value={formaPagamento} onValueChange={setFormaPagamento} disabled={saved}>
               <SelectTrigger className="h-8 w-[130px] text-sm">
                 <SelectValue placeholder="Forma de pgto." />

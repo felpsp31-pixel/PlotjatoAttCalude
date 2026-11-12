@@ -78,6 +78,8 @@ export interface Recibo {
   /** Pago no ato da emissao; entra no fechamento como ja recebido. */
   isPago?: boolean;
   formaPagamento?: string;
+  /** Avulso que deu sinal: quanto já foi pago (o que falta é total - sinal). */
+  valorSinal?: number;
 }
 
 export interface EmpresaInfo {

@@ -521,6 +521,7 @@ export type Database = {
           forma_pagamento: string | null
           id: string
           is_pago: boolean
+          valor_sinal: number | null
           lines: Json
           number: string
           obra_avulsa: string | null
@@ -538,6 +539,7 @@ export type Database = {
           forma_pagamento?: string | null
           id?: string
           is_pago?: boolean
+          valor_sinal?: number | null
           lines?: Json
           number: string
           obra_avulsa?: string | null
@@ -555,6 +557,7 @@ export type Database = {
           forma_pagamento?: string | null
           id?: string
           is_pago?: boolean
+          valor_sinal?: number | null
           lines?: Json
           number?: string
           obra_avulsa?: string | null

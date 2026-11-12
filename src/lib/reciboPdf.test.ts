@@ -53,6 +53,15 @@ describe('generateReciboPdf', () => {
     expect(pdf.output().match(/RECIBO N/g)).toHaveLength(2);
     if (process.env.SALVAR_PDF_TESTE) writeFileSync(`${process.env.SALVAR_PDF_TESTE}/recibo.pdf`, Buffer.from(pdf.output('arraybuffer')));
   });
+
+  it('recibo com sinal imprime SINAL com o pago e o que falta', async () => {
+    const r = { ...doc(linhas.map(({ prazoDiasUteis: _p, ...l }) => l)), valorSinal: 10 };
+    const pdf = await generateReciboPdf(r, { empresaInfo, tipo: 'recibo', formaPagamento: 'PIX' });
+    const out = pdf.output();
+    expect(out).toContain('SINAL');
+    expect(out).toContain('Falta:');
+    expect(out).not.toContain('(PAGO)');
+  });
 });
 
 describe('código do item', () => {

@@ -44,7 +44,7 @@ export interface Faturamento {
 }
 
 export function faturamentoNoPeriodo(
-  recibos: ReadonlyArray<{ date: string; total: number; isPago?: boolean }>,
+  recibos: ReadonlyArray<{ date: string; total: number; isPago?: boolean; valorSinal?: number }>,
   p: Pick<Periodo, 'inicio' | 'fim'>,
 ): Faturamento {
   const out: Faturamento = { total: 0, quantidade: 0, pago: 0, aReceber: 0 };
@@ -53,7 +53,12 @@ export function faturamentoNoPeriodo(
     out.total += r.total;
     out.quantidade++;
     if (r.isPago) out.pago += r.total;
-    else out.aReceber += r.total;
+    else if (r.valorSinal) {
+      // Sinal: parte já recebida, o resto ainda a receber.
+      const sinal = Math.min(r.valorSinal, r.total);
+      out.pago += sinal;
+      out.aReceber += r.total - sinal;
+    } else out.aReceber += r.total;
   }
   return out;
 }

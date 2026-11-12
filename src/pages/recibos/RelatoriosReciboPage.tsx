@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, CalendarDays } from 'lucide-react';
 import { useRecibos } from '@/contexts/RecibosContext';
 import RecibosAuthGuard from '@/components/recibos/RecibosAuthGuard';
 import Combobox from '@/components/recibos/Combobox';
@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent } from '@/components/ui/card';
+import { hojeBR } from '@/lib/dataLocal';
+import { faturamentoNoPeriodo, periodo, type TipoPeriodo } from '@/lib/faturamento';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 type SortKey = 'date-desc' | 'date-asc' | 'value-desc' | 'value-asc';
@@ -24,6 +27,7 @@ const RelatoriosReciboPage = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [sort, setSort] = useState<SortKey>('date-desc');
+  const [referencia, setReferencia] = useState(hojeBR());
 
   // Quando o cliente muda, reseta a obra (evita filtro inválido entre clientes)
   const handleClienteChange = (value: string) => {
@@ -45,6 +49,18 @@ const RelatoriosReciboPage = () => {
       return true;
     });
   }, [recibos, clienteFilter, obraFilter, startDate, endDate]);
+
+  // Faturamento do dia, da semana e do mês da data de referência. Segue os
+  // filtros de cliente e obra, mas não o de datas (cada card tem o seu período).
+  const cardsFaturamento = useMemo(() => {
+    const base = recibos.filter(r =>
+      (!clienteFilter || r.clienteId === clienteFilter) && (!obraFilter || r.obraId === obraFilter));
+    const ref = referencia || hojeBR();
+    return (['dia', 'semana', 'mes'] as TipoPeriodo[]).map(tipo => {
+      const p = periodo(tipo, ref);
+      return { ...p, ...faturamentoNoPeriodo(base, p) };
+    });
+  }, [recibos, clienteFilter, obraFilter, referencia]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -109,6 +125,50 @@ const RelatoriosReciboPage = () => {
     <RecibosAuthGuard>
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
+
+        <section aria-labelledby="titulo-faturamento" className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 id="titulo-faturamento" className="text-lg font-semibold text-foreground">Faturamento</h2>
+              <p className="text-sm text-muted-foreground">
+                Soma dos recibos emitidos{clienteFilter || obraFilter ? ', com o filtro de cliente e obra abaixo' : ''}.
+              </p>
+            </div>
+            <div className="flex items-end gap-2">
+              <label className="text-sm font-medium text-foreground">
+                Data de referência
+                <Input type="date" value={referencia} onChange={e => setReferencia(e.target.value)} className="text-base mt-1" />
+              </label>
+              <Button variant="outline" onClick={() => setReferencia(hojeBR())} disabled={referencia === hojeBR()}>Hoje</Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {cardsFaturamento.map(c => (
+              <Card key={c.tipo}>
+                <CardContent className="pt-4 space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {c.tipo === 'dia' ? 'Dia' : c.tipo === 'semana' ? 'Semana' : 'Mês'} · {c.rotulo}
+                  </p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">
+                    {c.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.quantidade} {c.quantidade === 1 ? 'recibo' : 'recibos'}
+                    {c.quantidade > 0 && <> · pago {c.pago.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · a receber {c.aReceber.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</>}
+                  </p>
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-xs"
+                    disabled={c.quantidade === 0}
+                    onClick={() => { setStartDate(c.inicio); setEndDate(c.fim); }}
+                  >
+                    <CalendarDays className="h-3.5 w-3.5 mr-1" /> Ver recibos do período
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
 
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end flex-wrap">
           <div className="w-full sm:w-56">

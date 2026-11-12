@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { Fragment, useState, useMemo, useEffect } from 'react';
 import { useRecibos } from '@/contexts/RecibosContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import Combobox from '@/components/recibos/Combobox';
+import type { FaixaDesconto } from '@/types/recibos';
 import { Plus, Pencil, Trash2, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -50,6 +51,42 @@ export const computeNextCode = (codes: string[]): string => {
   return String(max + 1);
 };
 
+const moeda = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/** Lista de faixas (a partir de X unidades, cada uma custa Y) de um serviço. */
+const FaixasEditor = ({ faixas, onChange }: { faixas: FaixaDesconto[]; onChange: (f: FaixaDesconto[]) => Promise<boolean> | void }) => {
+  const [qtd, setQtd] = useState('');
+  const [valor, setValor] = useState('');
+  const adicionar = async () => {
+    const q = Math.floor(Number(qtd));
+    const v = Number(valor.replace(',', '.'));
+    if (!(q > 1) || !(v >= 0) || valor.trim() === '') { toast.error('Informe a quantidade mínima (2 ou mais) e o valor da faixa'); return; }
+    if (faixas.some(f => f.qtd === q)) { toast.error(`Já existe uma faixa a partir de ${q} unidades`); return; }
+    const ok = await onChange([...faixas, { qtd: q, valor: v }].sort((a, b) => a.qtd - b.qtd));
+    if (ok !== false) { setQtd(''); setValor(''); }
+  };
+  return (
+    <div className="space-y-2 py-1">
+      <div className="flex flex-wrap gap-1.5">
+        {faixas.length === 0 && <span className="text-sm text-muted-foreground">Nenhuma faixa ainda.</span>}
+        {faixas.map(f => (
+          <span key={f.qtd} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-sm text-foreground">
+            a partir de <strong>{f.qtd}</strong> un: <strong>{moeda(f.valor)}</strong>
+            <button type="button" aria-label={`Remover faixa de ${f.qtd} unidades`} className="ml-1 text-muted-foreground hover:text-foreground" onClick={() => onChange(faixas.filter(x => x.qtd !== f.qtd))}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input type="number" min={2} placeholder="Qtd mínima" value={qtd} onChange={e => setQtd(e.target.value)} className="w-32 text-base" />
+        <Input type="number" min={0} step="0.01" placeholder="Valor unit." value={valor} onChange={e => setValor(e.target.value)} className="w-32 text-base" />
+        <Button size="sm" variant="secondary" onClick={adicionar}><Plus className="h-4 w-4 mr-1" /> Faixa</Button>
+      </div>
+    </div>
+  );
+};
+
 const ServicosReciboPage = () => {
   const {
     servicos, addServico, updateServico, deleteServico,
@@ -58,7 +95,7 @@ const ServicosReciboPage = () => {
   } = useRecibos();
 
   // Global services state
-  const [form, setForm] = useState({ description: '', unitPrice: '' });
+  const [form, setForm] = useState({ description: '', unitPrice: '', universal: false, descontoQtd: false });
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState({ code: '', description: '', unitPrice: '' });
   const [globalPage, setGlobalPage] = useState(1);
@@ -177,7 +214,7 @@ const ServicosReciboPage = () => {
         {/* SERVIÇOS GLOBAIS */}
         <TabsContent value="globais" className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Marque <strong>Universal</strong> para o serviço aparecer na emissão de recibo de <strong>todos</strong> os clientes, inclusive os que têm preço próprio. Sem a marcação, ele aparece só para quem não tem tabela própria.
+            Marque <strong>Universal</strong> para o serviço aparecer na emissão de recibo de <strong>todos</strong> os clientes, inclusive os que têm preço próprio. Marque <strong>Desconto Qtd</strong> para definir faixas: a partir de X unidades, todas passam a custar o valor da faixa (as quantidades do mesmo serviço se somam no recibo).
           </p>
           <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-end flex-wrap">
             <Input
@@ -189,11 +226,18 @@ const ServicosReciboPage = () => {
             />
             <Input placeholder="Descrição" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="w-full sm:w-60 text-base" />
             <Input placeholder="Valor unitário" type="number" value={form.unitPrice} onChange={e => setForm(p => ({ ...p, unitPrice: e.target.value }))} className="w-full sm:w-36 text-base" />
+            <label className="flex items-center gap-2 text-sm text-foreground min-h-[40px]">
+              <Checkbox checked={form.universal} onCheckedChange={v => setForm(p => ({ ...p, universal: !!v }))} /> Universal
+            </label>
+            <label className="flex items-center gap-2 text-sm text-foreground min-h-[40px]">
+              <Checkbox checked={form.descontoQtd} onCheckedChange={v => setForm(p => ({ ...p, descontoQtd: !!v }))} /> Desconto Qtd
+            </label>
             <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={async () => {
               if (!form.description.trim()) { toast.error('Preencha a descrição'); return; }
-              const ok = await addServico({ code: nextGlobalCode, description: form.description.trim(), unitPrice: Number(form.unitPrice) || 0 });
+              const ok = await addServico({ code: nextGlobalCode, description: form.description.trim(), unitPrice: Number(form.unitPrice) || 0, universal: form.universal, descontoQtd: form.descontoQtd, faixas: [] });
               if (!ok) return;
-              setForm({ description: '', unitPrice: '' });
+              setForm({ description: '', unitPrice: '', universal: false, descontoQtd: false });
+              if (form.descontoQtd) toast.info('Agora adicione as faixas de desconto na linha do serviço');
               toast.success('Serviço adicionado');
               setGlobalPage(Math.ceil((servicos.length + 1) / PAGE_SIZE));
             }}>
@@ -203,16 +247,18 @@ const ServicosReciboPage = () => {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow><TableHead>Código</TableHead><TableHead>Descrição</TableHead><TableHead>Valor Unitário</TableHead><TableHead className="w-28">Universal</TableHead><TableHead className="w-24" /></TableRow>
+                <TableRow><TableHead>Código</TableHead><TableHead>Descrição</TableHead><TableHead>Valor Unitário</TableHead><TableHead className="w-28">Universal</TableHead><TableHead className="w-32">Desconto Qtd</TableHead><TableHead className="w-24" /></TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedServicos.map(s => (
-                  <TableRow key={s.id}>
+                  <Fragment key={s.id}>
+                  <TableRow>
                     {editId === s.id ? (
                       <>
                         <TableCell><Input value={editData.code} onChange={e => setEditData(p => ({ ...p, code: e.target.value }))} className="text-base" /></TableCell>
                         <TableCell><Input value={editData.description} onChange={e => setEditData(p => ({ ...p, description: e.target.value }))} className="text-base" /></TableCell>
                         <TableCell><Input type="number" value={editData.unitPrice} onChange={e => setEditData(p => ({ ...p, unitPrice: e.target.value }))} className="text-base" /></TableCell>
+                        <TableCell />
                         <TableCell />
                         <TableCell className="flex gap-1">
                           <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={async () => {
@@ -241,6 +287,16 @@ const ServicosReciboPage = () => {
                             }}
                           />
                         </TableCell>
+                        <TableCell>
+                          <Checkbox
+                            checked={!!s.descontoQtd}
+                            aria-label={`${s.description}: desconto por quantidade`}
+                            onCheckedChange={async v => {
+                              const ok = await updateServico(s.id, { descontoQtd: !!v });
+                              if (ok) toast.success(v ? 'Desconto por quantidade ligado' : 'Desconto por quantidade desligado');
+                            }}
+                          />
+                        </TableCell>
                         <TableCell className="flex gap-1">
                           <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { setEditId(s.id); setEditData({ code: s.code, description: s.description, unitPrice: String(s.unitPrice) }); }}><Pencil className="h-4 w-4" /></Button>
                           <DeleteButton onConfirm={() => { deleteServico(s.id); toast.success('Removido'); }} />
@@ -248,9 +304,18 @@ const ServicosReciboPage = () => {
                       </>
                     )}
                   </TableRow>
+                  {s.descontoQtd && editId !== s.id && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell />
+                      <TableCell colSpan={5}>
+                        <FaixasEditor faixas={s.faixas ?? []} onChange={f => updateServico(s.id, { faixas: f })} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </Fragment>
                 ))}
                 {servicos.length === 0 && (
-                  <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhum serviço cadastrado</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhum serviço cadastrado</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

@@ -29,6 +29,15 @@ export interface Servico {
   unitPrice: number;
   /** Aparece para todo cliente, inclusive os que têm tabela própria. */
   universal?: boolean;
+  /** Serviço com desconto por quantidade (usa `faixas`). */
+  descontoQtd?: boolean;
+  faixas?: FaixaDesconto[];
+}
+
+/** A partir de `qtd` unidades, cada unidade custa `valor`. */
+export interface FaixaDesconto {
+  qtd: number;
+  valor: number;
 }
 
 export interface ClientService {

@@ -611,6 +611,8 @@ export type Database = {
           id: string
           unit_price: number
           universal: boolean
+          desconto_qtd: boolean
+          faixas_desconto: Json
         }
         Insert: {
           code?: string
@@ -618,6 +620,8 @@ export type Database = {
           id?: string
           unit_price?: number
           universal?: boolean
+          desconto_qtd?: boolean
+          faixas_desconto?: Json
         }
         Update: {
           code?: string
@@ -625,6 +629,8 @@ export type Database = {
           id?: string
           unit_price?: number
           universal?: boolean
+          desconto_qtd?: boolean
+          faixas_desconto?: Json
         }
         Relationships: []
       }

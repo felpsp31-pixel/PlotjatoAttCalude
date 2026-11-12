@@ -16,7 +16,7 @@ import { acharServico, NOME_COR, type ImportacaoAnalise, type ServicoDaTabela } 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { History, Download } from 'lucide-react';
 import { hojeBR } from '@/lib/dataLocal';
-import { montarTabelaDoCliente } from '@/lib/tabelaServicos';
+import { montarTabelaDoCliente, recalcularFaixas } from '@/lib/tabelaServicos';
 import { formatarDocumento, formatarTelefone } from '@/lib/documento';
 import { cn } from '@/lib/utils';
 
@@ -199,6 +199,10 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
 
   const updateLine = (idx: number, field: string, value: string | number) => {
     setLines(prev => {
+      const resultado = aplicar(prev);
+      return field === 'serviceCode' || field === 'quantity' ? recalcularFaixas(prev, resultado, tabelaDoCliente) : resultado;
+    });
+    function aplicar(prev: LinhaRecibo[]) {
       const next = [...prev];
       const line = { ...next[idx] };
       if (field === 'serviceCode') {
@@ -230,7 +234,7 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
       }
       next[idx] = line;
       return next;
-    });
+    }
   };
 
   // Valida o formulario e devolve linhas e total; null (com aviso) se faltar algo.
@@ -422,7 +426,8 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
           prazoDiasUteis: antes?.prazoDiasUteis, importKey: item.chave };
       });
       const resto = prev.filter(l => !l.importKey && l.serviceCode);
-      const result = [...novas, ...resto];
+      const juntas = [...novas, ...resto];
+      const result = recalcularFaixas([], juntas, tabelaDoCliente);
       while (result.length < 10) result.push({ serviceCode: '', description: '', quantity: 0, unitPrice: 0, total: 0 });
       return result;
     });

@@ -2,7 +2,15 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, t
 import { supabase } from '@/integrations/supabase/client';
 import type { Json, TablesUpdate } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Cliente, Solicitante, Obra, Servico, Recibo, EmpresaInfo, ClientService } from '@/types/recibos';
+import type { Cliente, Solicitante, Obra, Servico, Recibo, EmpresaInfo, ClientService, FaixaDesconto } from '@/types/recibos';
+
+function lerFaixas(v: unknown): FaixaDesconto[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map(f => ({ qtd: Number((f as FaixaDesconto)?.qtd), valor: Number((f as FaixaDesconto)?.valor) }))
+    .filter(f => f.qtd > 0 && f.valor >= 0)
+    .sort((a, b) => a.qtd - b.qtd);
+}
 import { toast } from 'sonner';
 
 interface MontanteCliente {
@@ -114,6 +122,8 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
         setServicos((srvRes.data || []).map((r) => ({
           id: r.id, code: r.code, description: r.description, unitPrice: Number(r.unit_price),
           universal: r.universal,
+          descontoQtd: r.desconto_qtd,
+          faixas: lerFaixas(r.faixas_desconto),
         })));
 
         setClientServices((csRes.data || []).map((r) => ({
@@ -205,7 +215,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
           code: s.code || '', description: s.description || '', unit_price: s.unitPrice || 0,
         }));
         const { data } = await supabase.from('servicos').insert(rows).select();
-        if (data) setServicos(data.map(r => ({ id: r.id, code: r.code, description: r.description, unitPrice: Number(r.unit_price), universal: r.universal })));
+        if (data) setServicos(data.map(r => ({ id: r.id, code: r.code, description: r.description, unitPrice: Number(r.unit_price), universal: r.universal, descontoQtd: r.desconto_qtd, faixas: lerFaixas(r.faixas_desconto) })));
       }
 
       if (lsRecibos.length > 0) {
@@ -330,13 +340,14 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
   const addServico = useCallback(async (s: Omit<Servico, 'id'>) => {
     const { data, error } = await supabase.from('servicos').insert([{
       code: s.code, description: s.description, unit_price: s.unitPrice, universal: s.universal ?? false,
+      desconto_qtd: s.descontoQtd ?? false, faixas_desconto: (s.faixas ?? []) as unknown as Json,
     }]).select().single();
     if (error || !data) {
       // 23505 = o banco recusou um codigo que ja existe.
       toast.error(error?.code === '23505' ? `O código ${s.code} já está em uso.` : 'Erro ao salvar o serviço.');
       return false;
     }
-    setServicos(p => [...p, { id: data.id, code: data.code, description: data.description, unitPrice: Number(data.unit_price), universal: data.universal }]);
+    setServicos(p => [...p, { id: data.id, code: data.code, description: data.description, unitPrice: Number(data.unit_price), universal: data.universal, descontoQtd: data.desconto_qtd, faixas: lerFaixas(data.faixas_desconto) }]);
     return true;
   }, []);
 
@@ -346,6 +357,8 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     if (s.description !== undefined) dbData.description = s.description;
     if (s.unitPrice !== undefined) dbData.unit_price = s.unitPrice;
     if (s.universal !== undefined) dbData.universal = s.universal;
+    if (s.descontoQtd !== undefined) dbData.desconto_qtd = s.descontoQtd;
+    if (s.faixas !== undefined) dbData.faixas_desconto = s.faixas;
     // Grava primeiro e so entao muda a tela: um codigo repetido e recusado
     // pelo banco e a lista continua como estava.
     const { error } = await supabase.from('servicos').update(dbData).eq('id', id);

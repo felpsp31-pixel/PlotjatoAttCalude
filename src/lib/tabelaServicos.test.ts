@@ -29,3 +29,38 @@ describe('montarTabelaDoCliente', () => {
     expect(t.map(i => i.value)).toEqual(['CS:8']);
   });
 });
+
+import { precoPorQuantidade, recalcularFaixas } from './tabelaServicos';
+import type { LinhaRecibo } from '@/types/recibos';
+
+describe('desconto por quantidade', () => {
+  const faixas = [{ qtd: 10, valor: 0.8 }, { qtd: 50, valor: 0.6 }];
+  const tabela = [{ value: 'A', code: 'A', description: 'Copia', unitPrice: 1, especial: false, faixas }];
+  const linha = (q: number, p = 0, code = 'A'): LinhaRecibo => ({ serviceCode: code, description: '', quantity: q, unitPrice: p, total: q * p });
+
+  it('escolhe a maior faixa atingida', () => {
+    expect(precoPorQuantidade(1, faixas, 9)).toBe(1);
+    expect(precoPorQuantidade(1, faixas, 10)).toBe(0.8);
+    expect(precoPorQuantidade(1, faixas, 49)).toBe(0.8);
+    expect(precoPorQuantidade(1, faixas, 50)).toBe(0.6);
+    expect(precoPorQuantidade(1, undefined, 500)).toBe(1);
+  });
+
+  it('o valor cai quando a quantidade bate a faixa, em todas as unidades', () => {
+    const antes = [linha(9, 1)];
+    const depois = recalcularFaixas(antes, [linha(10, 1)], tabela);
+    expect(depois[0].unitPrice).toBe(0.8);
+    expect(depois[0].total).toBeCloseTo(8);
+  });
+
+  it('soma as linhas do mesmo servico', () => {
+    const antes = [linha(6, 1), linha(0, 0)];
+    const depois = recalcularFaixas(antes, [linha(6, 1), linha(5, 0)], tabela);
+    expect(depois[0].unitPrice).toBe(0.8);
+  });
+
+  it('respeita valor digitado a mao', () => {
+    const antes = [linha(9, 0.95)];
+    expect(recalcularFaixas(antes, [linha(10, 0.95)], tabela)[0].unitPrice).toBe(0.95);
+  });
+});

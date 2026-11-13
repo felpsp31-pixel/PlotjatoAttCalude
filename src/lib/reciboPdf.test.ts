@@ -54,6 +54,20 @@ describe('generateReciboPdf', () => {
     if (process.env.SALVAR_PDF_TESTE) writeFileSync(`${process.env.SALVAR_PDF_TESTE}/recibo.pdf`, Buffer.from(pdf.output('arraybuffer')));
   });
 
+  it('avulso com pagamento no ato imprime PAGAMENTO NA RETIRADA e sem assinatura', async () => {
+    const r = { ...doc(linhas.map(({ prazoDiasUteis: _p, ...l }) => l)), clienteId: '', clienteAvulso: 'João Balcão' };
+    const out = (await generateReciboPdf(r, { empresaInfo, tipo: 'recibo' })).output();
+    expect(out).toContain('PAGAMENTO NA RETIRADA');
+    expect(out).not.toContain('Assinatura');
+  });
+
+  it('faturado em aberto continua com assinatura', async () => {
+    const r = { ...doc(linhas.map(({ prazoDiasUteis: _p, ...l }) => l)), clienteId: 'c', clienteAvulso: undefined };
+    const out = (await generateReciboPdf(r, { empresaInfo, tipo: 'recibo' })).output();
+    expect(out).toContain('Assinatura');
+    expect(out).not.toContain('RETIRADA');
+  });
+
   it('recibo com sinal imprime SINAL com o pago e o que falta', async () => {
     const r = { ...doc(linhas.map(({ prazoDiasUteis: _p, ...l }) => l)), valorSinal: 10 };
     const pdf = await generateReciboPdf(r, { empresaInfo, tipo: 'recibo', formaPagamento: 'PIX' });

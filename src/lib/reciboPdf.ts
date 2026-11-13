@@ -265,6 +265,15 @@ export const generateReciboPdf = async (r: Recibo, ctx: ReciboPdfContext) => {
       doc.text(`Pago: ${brl(sinal)}${forma}  ·  Falta: ${brl(r.total - sinal)}`, left + innerW / 2, Math.min(stampY + 4.5 * k, PAGE_H - 6 * k), { align: 'center' });
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'normal');
+    } else if (!isPago && !r.clienteId) {
+      // Avulso com "Pagamento no ato": paga quando retirar, sem assinatura.
+      const stampY = Math.min(Math.max(cy + 12 * k, PAGE_H - 26 * k), PAGE_H - 12 * k);
+      doc.setFont('helvetica', 'bold');
+      fs(16);
+      doc.setTextColor(37, 99, 235);
+      doc.text('PAGAMENTO NA RETIRADA', left + innerW / 2, stampY, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
     } else if (isPago) {
       const stampY = Math.min(Math.max(cy + 12 * k, PAGE_H - 26 * k), PAGE_H - 12 * k);
       doc.setFont('helvetica', 'bold');

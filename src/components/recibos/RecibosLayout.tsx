@@ -142,7 +142,9 @@ const RecibosLayout = () => {
           </aside>
         )}
 
-        <main className={cn('flex-1 overflow-hidden p-4 flex flex-col', isMobile && 'pt-16')}>
+        {/* Rola quando a página passa da altura da tela; páginas com rolagem
+            própria (h-full) continuam do mesmo jeito. */}
+        <main className={cn('flex-1 min-h-0 overflow-y-auto p-4 flex flex-col', isMobile && 'pt-16')}>
           <Outlet />
         </main>
 

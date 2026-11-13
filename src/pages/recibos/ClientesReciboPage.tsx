@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRecibos } from '@/contexts/RecibosContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -61,7 +61,14 @@ const ClientesReciboPage = () => {
   const [oEdit, setOEdit] = useState<string | null>(null);
   const [oEditData, setOEditData] = useState({ clienteId: '', name: '', hasDelivery: false, deliveryValue: 0, exemptionValue: 0 });
 
-  const clienteOptions = clientes.map(c => ({ value: c.id, label: c.name }));
+  // Sempre em ordem alfabética (ignora maiúsculas e acentos).
+  const porNome = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true });
+  const clientesOrdenados = useMemo(() => [...clientes].sort(porNome), [clientes]);
+  const solicitantesOrdenados = useMemo(() => [...solicitantes].sort(porNome), [solicitantes]);
+  const obrasOrdenadas = useMemo(() => [...obras].sort(porNome), [obras]);
+
+  const clienteOptions = clientesOrdenados.map(c => ({ value: c.id, label: c.name }));
 
   const DeleteButton = ({ onConfirm }: { onConfirm: () => void }) => (
     <AlertDialog>
@@ -90,7 +97,7 @@ const ClientesReciboPage = () => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-4">
       <h1 className="text-2xl font-bold text-foreground">Clientes, Solicitantes e Obras</h1>
       <Tabs defaultValue="clientes">
         <TabsList className="flex-wrap">
@@ -119,7 +126,7 @@ const ClientesReciboPage = () => {
             <Table>
               <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>CNPJ</TableHead><TableHead>Telefone</TableHead><TableHead>Email</TableHead><TableHead className="w-24" /></TableRow></TableHeader>
               <TableBody>
-                {clientes.map(c => (
+                {clientesOrdenados.map(c => (
                   <TableRow key={c.id}>
                     {cEdit === c.id ? (
                       <>
@@ -168,7 +175,7 @@ const ClientesReciboPage = () => {
             <Table>
               <TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Nome</TableHead><TableHead>Telefone</TableHead><TableHead className="w-24" /></TableRow></TableHeader>
               <TableBody>
-                {solicitantes.map(s => {
+                {solicitantesOrdenados.map(s => {
                   const clienteName = clientes.find(c => c.id === s.clienteId)?.name ?? '—';
                   return (
                     <TableRow key={s.id}>
@@ -236,7 +243,7 @@ const ClientesReciboPage = () => {
             <Table>
               <TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Obra</TableHead><TableHead>Entrega</TableHead><TableHead className="w-24" /></TableRow></TableHeader>
               <TableBody>
-                {obras.map(o => {
+                {obrasOrdenadas.map(o => {
                   const clienteName = clientes.find(c => c.id === o.clienteId)?.name ?? '—';
                   return (
                     <TableRow key={o.id}>

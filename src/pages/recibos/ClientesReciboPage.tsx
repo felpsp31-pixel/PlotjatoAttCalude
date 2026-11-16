@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useRecibos } from '@/contexts/RecibosContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Switch } from '@/components/ui/switch';
 import Combobox from '@/components/recibos/Combobox';
 import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
+import { agruparPorCliente } from '@/lib/agruparPorCliente';
 import { toast } from 'sonner';
 
 const validarCNPJ = (cnpj: string): boolean => {
@@ -65,10 +66,31 @@ const ClientesReciboPage = () => {
   const porNome = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true });
   const clientesOrdenados = useMemo(() => [...clientes].sort(porNome), [clientes]);
-  const solicitantesOrdenados = useMemo(() => [...solicitantes].sort(porNome), [solicitantes]);
-  const obrasOrdenadas = useMemo(() => [...obras].sort(porNome), [obras]);
 
   const clienteOptions = clientesOrdenados.map(c => ({ value: c.id, label: c.name }));
+
+  // Filtro por cliente (solicitantes e obras são mostrados agrupados por cliente).
+  const TODOS = '__todos__';
+  const filtroOptions = [{ value: TODOS, label: 'Todos os clientes' }, ...clienteOptions];
+  const [filtroSol, setFiltroSol] = useState('');
+  const [filtroObra, setFiltroObra] = useState('');
+  const idFiltro = (v: string) => (v && v !== TODOS ? v : undefined);
+  const gruposSolicitantes = useMemo(
+    () => agruparPorCliente(solicitantes, clientes, idFiltro(filtroSol)),
+    [solicitantes, clientes, filtroSol],
+  );
+  const gruposObras = useMemo(
+    () => agruparPorCliente(obras, clientes, idFiltro(filtroObra)),
+    [obras, clientes, filtroObra],
+  );
+
+  const CabecalhoGrupo = ({ nome, qtd, colunas }: { nome: string; qtd: number; colunas: number }) => (
+    <TableRow className="bg-muted/50 hover:bg-muted/50">
+      <TableCell colSpan={colunas} className="py-2 font-semibold text-foreground">
+        {nome} <span className="ml-1 text-xs font-normal text-muted-foreground">({qtd})</span>
+      </TableCell>
+    </TableRow>
+  );
 
   const DeleteButton = ({ onConfirm }: { onConfirm: () => void }) => (
     <AlertDialog>
@@ -171,38 +193,49 @@ const ClientesReciboPage = () => {
           <Button size="sm" className="min-h-[44px] sm:min-h-0" onClick={() => { if (!sForm.clienteId || !sForm.name) { toast.error('Preencha cliente e nome'); return; } addSolicitante(sForm); setSForm({ clienteId: '', name: '', phone: '' }); toast.success('Solicitante adicionado'); }}>
             <Plus className="h-4 w-4 mr-1" /> Adicionar
           </Button>
+          <div className="max-w-sm">
+            <Combobox options={filtroOptions} value={filtroSol} onValueChange={v => { setFiltroSol(v); setSForm(p => ({ ...p, clienteId: idFiltro(v) ?? p.clienteId })); }} placeholder="Filtrar por cliente" />
+          </div>
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Nome</TableHead><TableHead>Telefone</TableHead><TableHead className="w-24" /></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Telefone</TableHead><TableHead className="w-24" /></TableRow></TableHeader>
               <TableBody>
-                {solicitantesOrdenados.map(s => {
-                  const clienteName = clientes.find(c => c.id === s.clienteId)?.name ?? '—';
-                  return (
-                    <TableRow key={s.id}>
-                      {sEdit === s.id ? (
-                        <>
-                          <TableCell><Combobox options={clienteOptions} value={sEditData.clienteId} onValueChange={v => setSEditData(p => ({ ...p, clienteId: v }))} placeholder="Cliente" /></TableCell>
-                          <TableCell><Input value={sEditData.name} onChange={e => setSEditData(p => ({ ...p, name: e.target.value }))} className="text-base" /></TableCell>
-                          <TableCell><Input value={sEditData.phone} onChange={e => setSEditData(p => ({ ...p, phone: e.target.value }))} className="text-base" /></TableCell>
-                          <TableCell className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { updateSolicitante(s.id, sEditData); setSEdit(null); toast.success('Atualizado'); }}><Check className="h-4 w-4" /></Button>
-                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => setSEdit(null)}><X className="h-4 w-4" /></Button>
-                          </TableCell>
-                        </>
-                      ) : (
-                        <>
-                          <TableCell className="text-foreground">{clienteName}</TableCell>
-                          <TableCell className="text-foreground">{s.name}</TableCell>
-                          <TableCell className="text-foreground">{s.phone}</TableCell>
-                          <TableCell className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { setSEdit(s.id); setSEditData({ clienteId: s.clienteId, name: s.name, phone: s.phone }); }}><Pencil className="h-4 w-4" /></Button>
-                            <DeleteButton onConfirm={() => { deleteSolicitante(s.id); toast.success('Removido'); }} />
-                          </TableCell>
-                        </>
-                      )}
-                    </TableRow>
-                  );
-                })}
+                {gruposSolicitantes.length === 0 && (
+                  <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-6">Nenhum solicitante{idFiltro(filtroSol) ? ' para este cliente' : ' cadastrado'}.</TableCell></TableRow>
+                )}
+                {gruposSolicitantes.map(g => (
+                  <Fragment key={g.clienteId || 'sem-cliente'}>
+                    <CabecalhoGrupo nome={g.clienteNome} qtd={g.itens.length} colunas={3} />
+                    {g.itens.map(s => (
+                      <TableRow key={s.id}>
+                        {sEdit === s.id ? (
+                          <>
+                            <TableCell>
+                              <div className="space-y-1.5">
+                                <Combobox options={clienteOptions} value={sEditData.clienteId} onValueChange={v => setSEditData(p => ({ ...p, clienteId: v }))} placeholder="Cliente" />
+                                <Input value={sEditData.name} onChange={e => setSEditData(p => ({ ...p, name: e.target.value }))} className="text-base" />
+                              </div>
+                            </TableCell>
+                            <TableCell><Input value={sEditData.phone} onChange={e => setSEditData(p => ({ ...p, phone: e.target.value }))} className="text-base" /></TableCell>
+                            <TableCell className="flex gap-1">
+                              <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { updateSolicitante(s.id, sEditData); setSEdit(null); toast.success('Atualizado'); }}><Check className="h-4 w-4" /></Button>
+                              <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => setSEdit(null)}><X className="h-4 w-4" /></Button>
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell className="text-foreground pl-6">{s.name}</TableCell>
+                            <TableCell className="text-foreground">{s.phone}</TableCell>
+                            <TableCell className="flex gap-1">
+                              <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { setSEdit(s.id); setSEditData({ clienteId: s.clienteId, name: s.name, phone: s.phone }); }}><Pencil className="h-4 w-4" /></Button>
+                              <DeleteButton onConfirm={() => { deleteSolicitante(s.id); toast.success('Removido'); }} />
+                            </TableCell>
+                          </>
+                        )}
+                      </TableRow>
+                    ))}
+                  </Fragment>
+                ))}
               </TableBody>
             </Table>
           </div>
@@ -239,19 +272,30 @@ const ClientesReciboPage = () => {
           }}>
             <Plus className="h-4 w-4 mr-1" /> Adicionar
           </Button>
+          <div className="max-w-sm">
+            <Combobox options={filtroOptions} value={filtroObra} onValueChange={v => { setFiltroObra(v); setOForm(p => ({ ...p, clienteId: idFiltro(v) ?? p.clienteId })); }} placeholder="Filtrar por cliente" />
+          </div>
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Obra</TableHead><TableHead>Entrega</TableHead><TableHead className="w-24" /></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Obra</TableHead><TableHead>Entrega</TableHead><TableHead className="w-24" /></TableRow></TableHeader>
               <TableBody>
-                {obrasOrdenadas.map(o => {
-                  const clienteName = clientes.find(c => c.id === o.clienteId)?.name ?? '—';
-                  return (
-                    <TableRow key={o.id}>
-                      {oEdit === o.id ? (
-                        <>
-                          <TableCell><Combobox options={clienteOptions} value={oEditData.clienteId} onValueChange={v => setOEditData(p => ({ ...p, clienteId: v }))} placeholder="Cliente" /></TableCell>
-                          <TableCell><Input value={oEditData.name} onChange={e => setOEditData(p => ({ ...p, name: e.target.value }))} className="text-base" /></TableCell>
-                          <TableCell>
+                {gruposObras.length === 0 && (
+                  <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-6">Nenhuma obra{idFiltro(filtroObra) ? ' para este cliente' : ' cadastrada'}.</TableCell></TableRow>
+                )}
+                {gruposObras.map(g => (
+                  <Fragment key={g.clienteId || 'sem-cliente'}>
+                    <CabecalhoGrupo nome={g.clienteNome} qtd={g.itens.length} colunas={3} />
+                    {g.itens.map(o => (
+                      <TableRow key={o.id}>
+                        {oEdit === o.id ? (
+                          <>
+                            <TableCell>
+                              <div className="space-y-1.5">
+                                <Combobox options={clienteOptions} value={oEditData.clienteId} onValueChange={v => setOEditData(p => ({ ...p, clienteId: v }))} placeholder="Cliente" />
+                                <Input value={oEditData.name} onChange={e => setOEditData(p => ({ ...p, name: e.target.value }))} className="text-base" />
+                              </div>
+                            </TableCell>
+                            <TableCell>
                             <div className="flex items-center gap-2 flex-wrap">
                               <Switch checked={oEditData.hasDelivery} onCheckedChange={v => setOEditData(p => ({ ...p, hasDelivery: v, deliveryValue: v ? p.deliveryValue : 0, exemptionValue: v ? p.exemptionValue : 0 }))} />
                               {oEditData.hasDelivery && (
@@ -264,15 +308,14 @@ const ClientesReciboPage = () => {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { updateObra(o.id, oEditData); setOEdit(null); toast.success('Atualizado'); }}><Check className="h-4 w-4" /></Button>
-                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => setOEdit(null)}><X className="h-4 w-4" /></Button>
-                          </TableCell>
-                        </>
-                      ) : (
-                        <>
-                          <TableCell className="text-foreground">{clienteName}</TableCell>
-                          <TableCell className="text-foreground">{o.name}</TableCell>
+                            <TableCell className="flex gap-1">
+                              <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { updateObra(o.id, oEditData); setOEdit(null); toast.success('Atualizado'); }}><Check className="h-4 w-4" /></Button>
+                              <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => setOEdit(null)}><X className="h-4 w-4" /></Button>
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell className="text-foreground pl-6">{o.name}</TableCell>
                           <TableCell className="text-foreground">
                             {o.hasDelivery ? (
                               <span>
@@ -283,15 +326,16 @@ const ClientesReciboPage = () => {
                               </span>
                             ) : '—'}
                           </TableCell>
-                          <TableCell className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { setOEdit(o.id); setOEditData({ clienteId: o.clienteId, name: o.name, hasDelivery: o.hasDelivery, deliveryValue: o.deliveryValue, exemptionValue: o.exemptionValue }); }}><Pencil className="h-4 w-4" /></Button>
-                            <DeleteButton onConfirm={() => { deleteObra(o.id); toast.success('Removida'); }} />
-                          </TableCell>
-                        </>
-                      )}
-                    </TableRow>
-                  );
-                })}
+                            <TableCell className="flex gap-1">
+                              <Button size="icon" variant="ghost" className="min-h-[44px] min-w-[44px]" onClick={() => { setOEdit(o.id); setOEditData({ clienteId: o.clienteId, name: o.name, hasDelivery: o.hasDelivery, deliveryValue: o.deliveryValue, exemptionValue: o.exemptionValue }); }}><Pencil className="h-4 w-4" /></Button>
+                              <DeleteButton onConfirm={() => { deleteObra(o.id); toast.success('Removida'); }} />
+                            </TableCell>
+                          </>
+                        )}
+                      </TableRow>
+                    ))}
+                  </Fragment>
+                ))}
               </TableBody>
             </Table>
           </div>

@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { hojeBR, somarDias } from '@/lib/dataLocal';
 import RevisarEmails from '@/components/RevisarEmails';
+import ConferirExtratoDialog from '@/components/ConferirExtratoDialog';
 
 const MIN_SIDEBAR = 260;
 const MAX_SIDEBAR = 450;
@@ -307,6 +308,7 @@ const Dashboard = () => {
           </button>
           <div className="flex-1" />
           <RevisarEmails tipo="cobranca" estilo="botao" onAprovado={() => { refetch(); fetchCasual(); }} />
+          <ConferirExtratoDialog entities={allEntities} invoices={invoices} onBaixa={refetch} />
           <Button
             variant="outline"
             size="sm"

@@ -726,7 +726,16 @@ export type Database = {
         Returns: Json
       }
       next_recibo_number: { Args: never; Returns: string }
-      reservar_numeros_recibo: { Args: { qtd?: number }; Returns: string[] }
+      devolver_numero_recibo: { Args: { numero: string }; Returns: boolean }
+      liberar_numeros_recibo: {
+        Args: { aparelho: string; numeros: string[] }
+        Returns: number
+      }
+      numeros_do_aparelho: { Args: { aparelho: string }; Returns: string[] }
+      reservar_numeros_recibo: {
+        Args: { aparelho: string; qtd: number }
+        Returns: string[]
+      }
     }
     Enums: {
       [_ in never]: never

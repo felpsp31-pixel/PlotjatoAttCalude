@@ -13,6 +13,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import ThemeToggle from '@/components/ThemeToggle';
+import ModoOfflineAparelho from '@/components/recibos/ModoOfflineAparelho';
 
 const links = [
   { to: '/recibos', label: 'Recibos', icon: FileText, end: true },
@@ -163,6 +164,7 @@ const RecibosLayout = () => {
                 {form.logo && <img src={form.logo} alt="Logo" className="mt-2 h-16 object-contain" />}
               </div>
               <Button className="w-full min-h-[44px]" onClick={handleSave}>Salvar</Button>
+              <ModoOfflineAparelho />
             </div>
           </DialogContent>
         </Dialog>

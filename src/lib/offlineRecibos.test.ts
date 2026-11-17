@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  aparelhoOffline, ativarAparelho, conferirBloco, desativarAparelho, descartarBlocoAntigo, devolverNumero,
   guardarNumeros, lerCadastros, lerFila, linhaDoRecibo, marcarErro, numerosDisponiveis,
   porNaFila, salvarCadastros, semInternet, tirarDaFila, tirarNumero,
 } from './offlineRecibos';
@@ -13,6 +14,8 @@ const recibo = (id: string, number: string, extra: Partial<Recibo> = {}): Recibo
 beforeEach(() => localStorage.clear());
 
 describe('bloco de números offline', () => {
+  beforeEach(() => { ativarAparelho(); });
+
   it('usa os números em ordem, sem repetir, e avisa quando acaba', () => {
     guardarNumeros(['0201', '0202']);
     expect(tirarNumero()).toBe('0201');
@@ -24,6 +27,52 @@ describe('bloco de números offline', () => {
     guardarNumeros(['0201', '0202']);
     guardarNumeros(['0202', '0251', '0252']);
     expect(numerosDisponiveis()).toEqual(['0201', '0202', '0251', '0252']);
+  });
+
+  it('usa primeiro o menor número, mesmo que tenha chegado depois', () => {
+    guardarNumeros(['0251', '0252']);
+    guardarNumeros(['0013', '0014']);
+    expect(tirarNumero()).toBe('0013');
+  });
+
+  it('número devolvido volta para a frente', () => {
+    guardarNumeros(['0013', '0014', '0015']);
+    const n = tirarNumero()!;
+    devolverNumero(n);
+    expect(numerosDisponiveis()).toEqual(['0013', '0014', '0015']);
+  });
+
+  it('conferir com o servidor só tira, nunca acrescenta', () => {
+    guardarNumeros(['0013', '0014', '0015']);
+    // 0015 expirou no servidor; 0099 está num recibo sendo salvo em outra aba.
+    conferirBloco(['0013', '0014', '0099']);
+    expect(numerosDisponiveis()).toEqual(['0013', '0014']);
+  });
+
+  it('desativar apaga o bloco e a identidade do aparelho', () => {
+    guardarNumeros(['0013']);
+    desativarAparelho();
+    expect(aparelhoOffline()).toBeNull();
+    expect(numerosDisponiveis()).toEqual([]);
+  });
+});
+
+describe('aparelho sem modo offline', () => {
+  it('não guarda nem entrega números', () => {
+    guardarNumeros(['0013', '0014']);
+    expect(numerosDisponiveis()).toEqual([]);
+    expect(tirarNumero()).toBeNull();
+  });
+
+  it('o bloco da versão antiga é descartado', () => {
+    localStorage.setItem('plotjato:numerosOffline', JSON.stringify(['0013', '0014']));
+    descartarBlocoAntigo();
+    expect(localStorage.getItem('plotjato:numerosOffline')).toBeNull();
+  });
+
+  it('ativar de novo mantém a mesma identidade', () => {
+    const id = ativarAparelho();
+    expect(ativarAparelho()).toBe(id);
   });
 });
 

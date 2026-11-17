@@ -13,9 +13,10 @@ function lerFaixas(v: unknown): FaixaDesconto[] {
 }
 import { toast } from 'sonner';
 import {
-  TAMANHO_BLOCO, REPOR_ABAIXO_DE, comTrava, guardarNumeros, lerCadastros, lerFila, linhaDoRecibo,
-  marcarErro, numerosDisponiveis, porNaFila, salvarCadastros, semInternet, tirarDaFila, tirarNumero,
-  type CadastrosOffline,
+  TAMANHO_BLOCO, REPOR_ABAIXO_DE, aparelhoOffline, ativarAparelho, comTrava, conferirBloco,
+  desativarAparelho, descartarBlocoAntigo, devolverNumero, guardarNumeros, lerCadastros, lerFila,
+  linhaDoRecibo, marcarErro, numerosDisponiveis, porNaFila, salvarCadastros, semInternet, tirarDaFila,
+  tirarNumero, type CadastrosOffline,
 } from '@/lib/offlineRecibos';
 
 interface MontanteCliente {
@@ -59,6 +60,12 @@ interface RecibosContextType {
   pendentesComErro: number;
   /** Envia agora a fila de recibos offline. */
   sincronizarOffline: () => Promise<void>;
+  /** Este aparelho emite recibos sem internet (modo offline ativado). */
+  modoOfflineAtivo: boolean;
+  /** Números reservados neste aparelho e ainda não usados. */
+  numerosReservados: number;
+  ativarModoOffline: () => Promise<boolean>;
+  desativarModoOffline: () => Promise<boolean>;
 }
 
 const RecibosContext = createContext<RecibosContextType>({} as RecibosContextType);
@@ -86,11 +93,18 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [pendentesOffline, setPendentesOffline] = useState(() => lerFila().length);
   const [pendentesComErro, setPendentesComErro] = useState(() => lerFila().filter(p => p.erro).length);
+  const [modoOfflineAtivo, setModoOfflineAtivo] = useState(() => !!aparelhoOffline());
+  const [numerosReservados, setNumerosReservados] = useState(() => numerosDisponiveis().length);
   const atualizarContagem = useCallback(() => {
     const fila = lerFila();
     setPendentesOffline(fila.length);
     setPendentesComErro(fila.filter(p => p.erro).length);
+    setModoOfflineAtivo(!!aparelhoOffline());
+    setNumerosReservados(numerosDisponiveis().length);
   }, []);
+
+  // O bloco da versão antiga (reservado por todo navegador) não vale mais.
+  useEffect(() => { descartarBlocoAntigo(); }, []);
 
   // Põe na tela os cadastros (do servidor ou da cópia guardada).
   const aplicarCadastros = (linhas: CadastrosOffline) => {
@@ -471,7 +485,9 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
   const guardarOffline = useCallback(async (r: Omit<Recibo, 'id' | 'number'>, id: string, numero?: string): Promise<Recibo | null> => {
     const number = numero ?? await comTrava('plotjato-numeros', () => tirarNumero());
     if (!number) {
-      toast.error('Sem internet e sem números reservados neste aparelho. Emita um orçamento ou aguarde a conexão voltar.');
+      toast.error(aparelhoOffline()
+        ? 'Sem internet e sem números reservados neste aparelho. Emita um orçamento ou aguarde a conexão voltar.'
+        : 'Sem internet. Este aparelho não está com o modo offline ativado (Configurações), então só dá para emitir orçamento até a conexão voltar.');
       return null;
     }
     const salvo: Recibo = { ...r, id, number };
@@ -482,22 +498,48 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     return salvo;
   }, [atualizarContagem]);
 
+  // Confere o bloco deste aparelho com o servidor e reserva mais quando está
+  // acabando. Só faz algo com o modo offline ativado.
+  const reporNumeros = useCallback(async () => {
+    const aparelho = aparelhoOffline();
+    if (!aparelho || semInternet()) return;
+    await comTrava('plotjato-numeros', async () => {
+      const { data: doServidor, error: errConf } = await supabase.rpc('numeros_do_aparelho', { aparelho });
+      if (errConf || !Array.isArray(doServidor)) {
+        if (errConf && !semInternet(errConf)) console.error('Erro ao conferir números do aparelho:', errConf);
+        return;
+      }
+      conferirBloco(doServidor);
+      if (numerosDisponiveis().length >= REPOR_ABAIXO_DE) return;
+      const { data, error } = await supabase.rpc('reservar_numeros_recibo', { qtd: TAMANHO_BLOCO, aparelho });
+      if (!error && Array.isArray(data)) guardarNumeros(data);
+      else if (error && !semInternet(error)) console.error('Erro ao reservar números offline:', error);
+    });
+    atualizarContagem();
+  }, [atualizarContagem]);
+
   // Com internet, salva e so devolve depois que o servidor confirmou, ja com
-  // o numero definitivo. Sem internet, usa o bloco reservado e entra na fila.
+  // o numero definitivo. O aparelho com modo offline usa o proprio bloco
+  // tambem online (assim a sequencia nao fica com buracos). Sem internet, usa
+  // o bloco e entra na fila.
   const addRecibo = useCallback(async (r: Omit<Recibo, 'id' | 'number'>): Promise<Recibo | null> => {
     const id = crypto.randomUUID();
     if (semInternet()) return guardarOffline(r, id);
 
     // Tenta 2 vezes, para o caso raro de colisao de numero.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const { data: numData, error: numErr } = await supabase.rpc('next_recibo_number');
-      if (numErr || !numData) {
-        if (semInternet(numErr)) return guardarOffline(r, id);
-        console.error('Error getting next recibo number:', numErr);
-        toast.error('Erro ao gerar número do recibo. Verifique sua conexão.');
-        return null;
+      let number = aparelhoOffline() ? await comTrava('plotjato-numeros', () => tirarNumero()) : null;
+      const doBloco = !!number;
+      if (!number) {
+        const { data: numData, error: numErr } = await supabase.rpc('next_recibo_number');
+        if (numErr || !numData) {
+          if (semInternet(numErr)) return guardarOffline(r, id);
+          console.error('Error getting next recibo number:', numErr);
+          toast.error('Erro ao gerar número do recibo. Verifique sua conexão.');
+          return null;
+        }
+        number = String(numData);
       }
-      const number = String(numData);
       const salvo: Recibo = { ...r, id, number };
 
       const { error } = await supabase.from('recibos').insert([linhaDoRecibo(salvo)]);
@@ -505,6 +547,10 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
       if (!error) {
         setRecibos(p => [...p, salvo]);
         registrarAvulso(r);
+        if (doBloco) {
+          atualizarContagem();
+          if (numerosDisponiveis().length < REPOR_ABAIXO_DE) void reporNumeros();
+        }
         return salvo;
       }
 
@@ -515,12 +561,64 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
       // 23505 = numero ja usado; tenta de novo com outro.
       if (error.code === '23505' && attempt === 0) continue;
 
+      // Recusado por outro motivo: o numero nao foi usado e volta.
+      const recusado = number;
+      if (doBloco) {
+        await comTrava('plotjato-numeros', () => devolverNumero(recusado));
+        atualizarContagem();
+      } else {
+        supabase.rpc('devolver_numero_recibo', { numero: recusado }).then(({ error: e }) => {
+          if (e) console.error('Erro ao devolver número de recibo:', e);
+        });
+      }
       console.error('Error saving recibo:', error);
       toast.error('Erro ao salvar recibo no servidor. Verifique sua conexão.');
       return null;
     }
     return null;
-  }, [guardarOffline]);
+  }, [guardarOffline, reporNumeros, atualizarContagem]);
+
+  // Liga o modo offline neste aparelho: reserva o primeiro bloco.
+  const ativarModoOffline = useCallback(async () => {
+    if (semInternet()) {
+      toast.error('Conecte-se à internet para ativar o modo offline.');
+      return false;
+    }
+    ativarAparelho();
+    await reporNumeros();
+    if (numerosDisponiveis().length === 0) {
+      desativarAparelho();
+      atualizarContagem();
+      toast.error('Não foi possível reservar números para este aparelho. Tente de novo.');
+      return false;
+    }
+    atualizarContagem();
+    toast.success(`Modo offline ativado: ${numerosDisponiveis().length} números reservados para este aparelho.`);
+    return true;
+  }, [reporNumeros, atualizarContagem]);
+
+  // Desliga: os números que sobraram voltam para a sequência.
+  const desativarModoOffline = useCallback(async () => {
+    const aparelho = aparelhoOffline();
+    if (!aparelho) return true;
+    if (semInternet()) {
+      toast.error('Conecte-se à internet para desativar o modo offline (os números reservados precisam voltar).');
+      return false;
+    }
+    const ok = await comTrava('plotjato-numeros', async () => {
+      const { error } = await supabase.rpc('liberar_numeros_recibo', { aparelho, numeros: numerosDisponiveis() });
+      if (error) {
+        console.error('Erro ao liberar números:', error);
+        return false;
+      }
+      desativarAparelho();
+      return true;
+    });
+    atualizarContagem();
+    if (ok) toast.success('Modo offline desativado neste aparelho.');
+    else toast.error('Não foi possível desativar agora. Tente de novo.');
+    return ok;
+  }, [atualizarContagem]);
 
   // Sobe a fila de recibos offline e repõe o bloco de números.
   const sincronizando = useRef(false);
@@ -546,14 +644,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
         }
       });
 
-      if (numerosDisponiveis().length < REPOR_ABAIXO_DE) {
-        await comTrava('plotjato-numeros', async () => {
-          if (numerosDisponiveis().length >= REPOR_ABAIXO_DE) return; // outra aba ja repos
-          const { data, error } = await supabase.rpc('reservar_numeros_recibo', { qtd: TAMANHO_BLOCO });
-          if (!error && Array.isArray(data)) guardarNumeros(data);
-          else if (error && !semInternet(error)) console.error('Erro ao reservar números offline:', error);
-        });
-      }
+      await reporNumeros();
     } finally {
       sincronizando.current = false;
       atualizarContagem();
@@ -561,7 +652,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
     if (enviados > 0) {
       toast.success(enviados === 1 ? '1 recibo emitido sem internet foi enviado.' : `${enviados} recibos emitidos sem internet foram enviados.`);
     }
-  }, [authenticated, atualizarContagem]);
+  }, [authenticated, atualizarContagem, reporNumeros]);
 
   // Envia ao entrar, quando a internet volta e de tempos em tempos.
   useEffect(() => {
@@ -597,6 +688,7 @@ export const RecibosProvider = ({ children }: { children: ReactNode }) => {
       montantePorCliente,
       loading,
       pendentesOffline, pendentesComErro, sincronizarOffline,
+      modoOfflineAtivo, numerosReservados, ativarModoOffline, desativarModoOffline,
     }}>
       {children}
     </RecibosContext.Provider>

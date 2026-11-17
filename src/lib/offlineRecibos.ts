@@ -3,9 +3,10 @@ import type { Tables, TablesInsert } from '@/integrations/supabase/types';
 
 // Emissão de recibo sem internet.
 //
-// Enquanto há internet, o aparelho reserva um bloco de números no servidor
-// (o contador de lá já pula esses números, então nenhum outro aparelho os
-// recebe). Sem internet, cada recibo usa o próximo número do bloco e vai
+// Só o aparelho com o modo offline ativado (botão em Configurações) reserva
+// um bloco de números no servidor, que registra o bloco em nome do aparelho.
+// Esse aparelho usa o bloco também com internet, então a sequência não fica
+// com buracos. Sem internet, cada recibo usa o próximo número do bloco e vai
 // para uma fila guardada no aparelho. Ao reconectar, a fila sobe sozinha.
 // Cada recibo leva a sua identidade (id) desde a emissão, então reenviar o
 // mesmo recibo não cria uma segunda cópia no banco.
@@ -14,7 +15,10 @@ export const TAMANHO_BLOCO = 50;
 /** Abaixo disso, com internet, o aparelho reserva mais um bloco. */
 export const REPOR_ABAIXO_DE = 15;
 
-const CHAVE_NUMEROS = 'plotjato:numerosOffline';
+const CHAVE_APARELHO = 'plotjato:aparelhoOffline';
+const CHAVE_NUMEROS = 'plotjato:blocoNumeros';
+/** Bloco da versão antiga, reservado por todo navegador: não vale mais. */
+const CHAVE_NUMEROS_ANTIGA = 'plotjato:numerosOffline';
 const CHAVE_FILA = 'plotjato:filaRecibos';
 const CHAVE_CADASTROS = 'plotjato:cadastrosOffline';
 
@@ -48,17 +52,62 @@ function gravar(chave: string, valor: unknown) {
   localStorage.setItem(chave, JSON.stringify(valor));
 }
 
+// ---------- Aparelho com modo offline ----------
+
+/** Identidade deste aparelho no servidor, ou null se o modo offline está desligado. */
+export function aparelhoOffline(): string | null {
+  const id = ler<unknown>(CHAVE_APARELHO, null);
+  return typeof id === 'string' && id ? id : null;
+}
+
+export function ativarAparelho(): string {
+  const atual = aparelhoOffline();
+  if (atual) return atual;
+  const id = crypto.randomUUID();
+  gravar(CHAVE_APARELHO, id);
+  gravar(CHAVE_NUMEROS, []);
+  return id;
+}
+
+export function desativarAparelho() {
+  localStorage.removeItem(CHAVE_APARELHO);
+  localStorage.removeItem(CHAVE_NUMEROS);
+}
+
+export function descartarBlocoAntigo() {
+  try { localStorage.removeItem(CHAVE_NUMEROS_ANTIGA); } catch { /* sem acesso ao armazenamento */ }
+}
+
 // ---------- Bloco de números ----------
 
+const emOrdem = (l: string[]) => [...l].sort((a, b) => Number(a) - Number(b));
+
 export function numerosDisponiveis(): string[] {
+  if (!aparelhoOffline()) return [];
   const n = ler<unknown>(CHAVE_NUMEROS, []);
   return Array.isArray(n) ? n.filter((x): x is string => typeof x === 'string') : [];
 }
 
+/** Junta números novos ao bloco, sem duplicar, do menor para o maior. */
 export function guardarNumeros(novos: string[]) {
-  const atuais = numerosDisponiveis();
-  const vistos = new Set(atuais);
-  gravar(CHAVE_NUMEROS, [...atuais, ...novos.filter(n => !vistos.has(n))]);
+  if (!aparelhoOffline()) return;
+  gravar(CHAVE_NUMEROS, emOrdem([...new Set([...numerosDisponiveis(), ...novos])]));
+}
+
+/** Põe de volta um número que não chegou a ser usado. */
+export function devolverNumero(numero: string) {
+  guardarNumeros([numero]);
+}
+
+/**
+ * Deixa no bloco só o que o servidor ainda guarda para este aparelho. Nunca
+ * acrescenta: um número que está no servidor e não está aqui pode estar num
+ * recibo sendo salvo agora ou na fila.
+ */
+export function conferirBloco(doServidor: string[]) {
+  if (!aparelhoOffline()) return;
+  const valem = new Set(doServidor);
+  gravar(CHAVE_NUMEROS, numerosDisponiveis().filter(n => valem.has(n)));
 }
 
 /** Tira o próximo número do bloco; null se acabou. */

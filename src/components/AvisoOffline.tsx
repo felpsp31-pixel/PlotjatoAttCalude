@@ -1,7 +1,7 @@
 import { CloudOff, CloudUpload, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRecibos } from '@/contexts/RecibosContext';
-import { numerosDisponiveis } from '@/lib/offlineRecibos';
+import { aparelhoOffline, numerosDisponiveis } from '@/lib/offlineRecibos';
 import { useConectado } from '@/hooks/useConectado';
 
 /**
@@ -35,7 +35,9 @@ const AvisoOffline = () => {
         <span>
           <strong>Sem internet.</strong> Recibos ficam guardados e sobem quando a conexão voltar
           {pendentesOffline > 0 && <> · {plural(pendentesOffline, 'aguardando', 'aguardando')}</>}
-          {' · '}{plural(numerosDisponiveis().length, 'número livre', 'números livres')}
+          {' · '}{aparelhoOffline()
+            ? plural(numerosDisponiveis().length, 'número livre', 'números livres')
+            : 'este aparelho só emite orçamento'}
         </span>
       </div>
     );

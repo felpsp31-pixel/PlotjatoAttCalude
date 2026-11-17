@@ -19,6 +19,7 @@ import { hojeBR } from '@/lib/dataLocal';
 import { montarTabelaDoCliente, recalcularFaixas } from '@/lib/tabelaServicos';
 import { formatarDocumento, formatarTelefone } from '@/lib/documento';
 import { cn } from '@/lib/utils';
+import { numerosDisponiveis, semInternet } from '@/lib/offlineRecibos';
 
 const formatDate = (date: string) => {
   if (!date) return '—';
@@ -37,7 +38,7 @@ const emptyLines = (): LinhaRecibo[] =>
 const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' }) => {
   const orcamento = modo === 'orcamento';
   const location = useLocation();
-  const { clientes, solicitantes, obras, servicos, clientServices, recibos, addRecibo, empresaInfo, loading } = useRecibos();
+  const { clientes, solicitantes, obras, servicos, clientServices, recibos, addRecibo, empresaInfo, loading, modoOfflineAtivo, numerosReservados } = useRecibos();
   const [clienteId, setClienteId] = useState('');
   const [clienteAvulso, setClienteAvulso] = useState('');
   // 'faturado': empresa cadastrada, entra no fechamento do mes.
@@ -196,13 +197,27 @@ const EmissaoReciboPage = ({ modo = 'recibo' }: { modo?: 'recibo' | 'orcamento' 
   }, [hasDiscount, discountInput, discountType, subtotal]);
   const total = Math.max(0, subtotal - discountAmount);
 
+  // Numero que o proximo recibo vai receber. Aparelho com modo offline usa o
+  // proprio bloco; os demais perguntam ao servidor, que comeca pelos numeros
+  // vagos. O definitivo so e dado na hora de salvar.
+  const [previstoServidor, setPrevistoServidor] = useState<string | null>(null);
+  useEffect(() => {
+    if (orcamento || modoOfflineAtivo || semInternet()) return;
+    let vivo = true;
+    supabase.rpc('proximo_numero_recibo').then(({ data, error }) => {
+      if (vivo) setPrevistoServidor(!error && data ? String(data) : null);
+    });
+    return () => { vivo = false; };
+  }, [orcamento, modoOfflineAtivo, recibos.length]);
   const nextNumber = useMemo(() => {
+    if (modoOfflineAtivo) return (numerosReservados > 0 && numerosDisponiveis()[0]) || '—';
+    if (previstoServidor) return previstoServidor;
     const maxNum = recibos.reduce((max, rc) => {
       const n = parseInt(rc.number, 10);
       return isNaN(n) ? max : Math.max(max, n);
     }, 0);
     return String(maxNum + 1).padStart(4, '0');
-  }, [recibos]);
+  }, [recibos, modoOfflineAtivo, numerosReservados, previstoServidor]);
 
   const updateLine = (idx: number, field: string, value: string | number) => {
     setLines(prev => {

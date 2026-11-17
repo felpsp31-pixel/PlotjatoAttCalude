@@ -732,6 +732,7 @@ export type Database = {
         Returns: number
       }
       numeros_do_aparelho: { Args: { aparelho: string }; Returns: string[] }
+      proximo_numero_recibo: { Args: never; Returns: string }
       reservar_numeros_recibo: {
         Args: { aparelho: string; qtd: number }
         Returns: string[]

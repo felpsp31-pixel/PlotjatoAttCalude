@@ -7,6 +7,9 @@ const demandas: unknown[] = [];
 const invoices: unknown[] = [];
 let falharDemandas = false;
 
+// O aviso de feriado depende da data real e tem teste próprio.
+vi.mock('@/components/AvisoFeriado', () => ({ default: () => null }));
+
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: (tabela: string) => {

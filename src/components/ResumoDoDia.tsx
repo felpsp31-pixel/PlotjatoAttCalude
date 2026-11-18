@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Clock, PackageCheck, Wallet, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { hojeBR, somarDias } from '@/lib/dataLocal';
+import AvisoFeriado from '@/components/AvisoFeriado';
 
 /**
  * O que importa hoje, numa olhada só.
@@ -92,7 +93,14 @@ const ResumoDoDia = () => {
     return () => { vivo = false; };
   }, []);
 
-  if (erro) return null;
+  // O aviso de feriado não depende do banco: aparece mesmo se o resumo falhar.
+  if (erro) {
+    return (
+      <div className="flex flex-wrap items-center justify-center gap-3 mb-8 empty:hidden">
+        <AvisoFeriado />
+      </div>
+    );
+  }
 
   if (!r) {
     return (
@@ -107,9 +115,12 @@ const ResumoDoDia = () => {
 
   if (nada) {
     return (
-      <p className="text-sm text-muted-foreground text-center h-20 flex items-center justify-center">
-        Nada vencendo hoje e nada atrasado. Bom dia de trabalho.
-      </p>
+      <div className="flex flex-col items-center justify-center gap-3 mb-8">
+        <AvisoFeriado />
+        <p className="text-sm text-muted-foreground text-center">
+          Nada vencendo hoje e nada atrasado. Bom dia de trabalho.
+        </p>
+      </div>
     );
   }
 
@@ -131,6 +142,7 @@ const ResumoDoDia = () => {
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+      <AvisoFeriado />
       {r.atrasadas > 0 && (
         <Bloco
           icone={<AlertTriangle className="h-5 w-5" />}

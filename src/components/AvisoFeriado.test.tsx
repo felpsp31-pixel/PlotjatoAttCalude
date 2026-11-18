@@ -18,13 +18,22 @@ describe('AvisoFeriado', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('"Já coloquei" some com o aviso e não volta', () => {
+  it('"Já coloquei" fecha nesta abertura do sistema', () => {
     const { unmount } = render(<AvisoFeriado agora={dia('2026-12-23')} />);
     fireEvent.click(screen.getByText('Já coloquei'));
     expect(screen.queryByText('Natal')).toBeNull();
     unmount();
-    render(<AvisoFeriado agora={dia('2026-12-24')} />);
+    render(<AvisoFeriado agora={dia('2026-12-23')} />); // mesma janela, volta à tela inicial
     expect(screen.queryByText('Natal')).toBeNull();
+  });
+
+  it('abre de novo na próxima abertura do sistema, mesmo depois de marcado', () => {
+    const { unmount } = render(<AvisoFeriado agora={dia('2026-12-23')} />);
+    fireEvent.click(screen.getByText('Já coloquei'));
+    unmount();
+    sessionStorage.clear(); // fechar e abrir o sistema
+    render(<AvisoFeriado agora={dia('2026-12-24')} />);
+    expect(screen.getByText('Colocar aviso de funcionamento')).toBeInTheDocument();
   });
 
   it('não fecha com Esc nem tem botão X', () => {

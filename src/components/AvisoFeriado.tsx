@@ -11,17 +11,18 @@ import { feriadoParaAvisar, formatarDataFeriado } from '@/lib/feriados';
  * Lembrete para colocar o aviso de funcionamento antes de um feriado
  * (nacional ou municipal de BH). Aparece como bloco no resumo do dia e
  * como pop-up toda vez que o sistema abre. O pop-up não fecha (sem X, Esc
- * ou clique fora): só some quando marcado "Já coloquei".
+ * ou clique fora): só fecha com "Já coloquei", e isso vale só para esta
+ * abertura do sistema. Na próxima vez que abrir, aparece de novo, até o feriado.
  */
 
-const chaveOk = (data: string) => `aviso_feriado_ok:${data}`;
+const chaveOk = (data: string) => `aviso_feriado_visto:${data}`;
 
 const ler = (s: Storage, k: string) => { try { return s.getItem(k); } catch { return null; } };
 const gravar = (s: Storage, k: string) => { try { s.setItem(k, '1'); } catch { /* sem storage */ } };
 
 const AvisoFeriado = ({ agora }: { agora?: Date }) => {
   const feriado = useMemo(() => feriadoParaAvisar(hojeBR(agora ?? new Date())), [agora]);
-  const [ok, setOk] = useState(() => !!feriado && !!ler(localStorage, chaveOk(feriado.data)));
+  const [ok, setOk] = useState(() => !!feriado && !!ler(sessionStorage, chaveOk(feriado.data)));
   const [popup, setPopup] = useState(() => !!feriado && !ok);
 
   if (!feriado || ok) return null;
@@ -30,7 +31,7 @@ const AvisoFeriado = ({ agora }: { agora?: Date }) => {
   const tipo = feriado.tipo === 'ponto facultativo' ? 'ponto facultativo' : `feriado ${feriado.tipo}`;
 
   const confirmar = () => {
-    gravar(localStorage, chaveOk(feriado.data));
+    gravar(sessionStorage, chaveOk(feriado.data));
     setPopup(false);
     setOk(true);
   };

@@ -27,10 +27,19 @@ describe('AvisoFeriado', () => {
     expect(screen.queryByText('Natal')).toBeNull();
   });
 
-  it('"Lembrar depois" fecha o pop-up mas mantém o bloco', () => {
+  it('não fecha com Esc nem tem botão X', () => {
     render(<AvisoFeriado agora={dia('2026-12-23')} />);
-    fireEvent.click(screen.getByText('Lembrar depois'));
-    expect(screen.queryByText('Colocar aviso de funcionamento')).toBeNull();
-    expect(screen.getByText('Natal')).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(screen.getByText('Colocar aviso de funcionamento')).toBeInTheDocument();
+    expect(screen.queryByText('Lembrar depois')).toBeNull();
+    expect(screen.getByRole('dialog').querySelector('button.absolute')).toBeTruthy(); // existe no DOM…
+    expect(screen.getByRole('dialog').className).toContain('[&>button.absolute]:hidden'); // …mas escondido
+  });
+
+  it('volta a abrir toda vez que o sistema abre, até confirmar', () => {
+    const { unmount } = render(<AvisoFeriado agora={dia('2026-12-23')} />);
+    unmount();
+    render(<AvisoFeriado agora={dia('2026-12-23')} />);
+    expect(screen.getByText('Colocar aviso de funcionamento')).toBeInTheDocument();
   });
 });

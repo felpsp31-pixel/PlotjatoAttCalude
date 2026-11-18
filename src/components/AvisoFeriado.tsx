@@ -9,12 +9,12 @@ import { feriadoParaAvisar, formatarDataFeriado } from '@/lib/feriados';
 
 /**
  * Lembrete para colocar o aviso de funcionamento antes de um feriado
- * (nacional ou municipal de BH). Aparece como bloco no resumo do dia e,
- * uma vez por sessão, como pop-up. Some quando marcado "Já coloquei".
+ * (nacional ou municipal de BH). Aparece como bloco no resumo do dia e
+ * como pop-up toda vez que o sistema abre. O pop-up não fecha (sem X, Esc
+ * ou clique fora): só some quando marcado "Já coloquei".
  */
 
 const chaveOk = (data: string) => `aviso_feriado_ok:${data}`;
-const chavePopup = (data: string) => `aviso_feriado_popup:${data}`;
 
 const ler = (s: Storage, k: string) => { try { return s.getItem(k); } catch { return null; } };
 const gravar = (s: Storage, k: string) => { try { s.setItem(k, '1'); } catch { /* sem storage */ } };
@@ -22,18 +22,13 @@ const gravar = (s: Storage, k: string) => { try { s.setItem(k, '1'); } catch { /
 const AvisoFeriado = ({ agora }: { agora?: Date }) => {
   const feriado = useMemo(() => feriadoParaAvisar(hojeBR(agora ?? new Date())), [agora]);
   const [ok, setOk] = useState(() => !!feriado && !!ler(localStorage, chaveOk(feriado.data)));
-  const [popup, setPopup] = useState(
-    () => !!feriado && !ok && !ler(sessionStorage, chavePopup(feriado.data)));
+  const [popup, setPopup] = useState(() => !!feriado && !ok);
 
   if (!feriado || ok) return null;
 
   const quando = feriado.dias === 1 ? 'amanhã' : `em ${feriado.dias} dias`;
   const tipo = feriado.tipo === 'ponto facultativo' ? 'ponto facultativo' : `feriado ${feriado.tipo}`;
 
-  const fecharPopup = () => {
-    gravar(sessionStorage, chavePopup(feriado.data));
-    setPopup(false);
-  };
   const confirmar = () => {
     gravar(localStorage, chaveOk(feriado.data));
     setPopup(false);
@@ -56,8 +51,14 @@ const AvisoFeriado = ({ agora }: { agora?: Date }) => {
         </span>
       </button>
 
-      <Dialog open={popup} onOpenChange={(v) => (v ? setPopup(true) : fecharPopup())}>
-        <DialogContent className="sm:max-w-sm">
+      {/* Ignora pedidos de fechar: só o "Já coloquei" tira o pop-up. */}
+      <Dialog open={popup} onOpenChange={(v) => { if (v) setPopup(true); }}>
+        <DialogContent
+          className="sm:max-w-sm [&>button.absolute]:hidden"
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Colocar aviso de funcionamento</DialogTitle>
             <DialogDescription>
@@ -65,8 +66,7 @@ const AvisoFeriado = ({ agora }: { agora?: Date }) => {
               Avise os clientes sobre o horário de funcionamento.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={fecharPopup}>Lembrar depois</Button>
+          <DialogFooter>
             <Button onClick={confirmar}>Já coloquei</Button>
           </DialogFooter>
         </DialogContent>
